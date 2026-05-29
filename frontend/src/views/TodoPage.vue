@@ -1,0 +1,1473 @@
+<template>
+  <PasswordGate>
+    <main>
+      <!-- Header -->
+      <section class="section">
+        <div class="container">
+          <div class="card card-pad-lg fade-up">
+            <div class="flex justify-between items-center" style="flex-wrap: wrap; gap: 12px;">
+              <div>
+                <p class="text-sm"></p>
+                <h1 class="heading-xl">{{ prefs.t('todoTitle') }}</h1>
+              </div>
+              <div class="board-actions">
+                <button class="btn btn-sm" @click="showBoardModal = true">+ {{ prefs.t('todoAddBoard') }}</button>
+                <button class="btn btn-sm" @click="showColModal = true">+ {{ prefs.t('todoAddColumn') }}</button>
+                <button class="btn btn-sm btn-filled" @click="openNewTodo">+ {{ prefs.t('todoAddTask') }}</button>
+              </div>
+            </div>
+            <div class="board-tabs" style="margin-top: 20px;">
+              <div
+                v-for="board in boards" :key="board.id"
+                class="board-tab"
+                :class="{ active: currentBoardId === board.id }"
+                @click="switchBoard(board.id)"
+                @dblclick="startEditBoard(board)">
+                <span v-if="editingBoardId !== board.id">{{ board.name }}</span>
+                <input
+                  v-else
+                  ref="boardEditInputs"
+                  class="board-tab-input"
+                  v-model="editingBoardName"
+                  @blur="finishEditBoard"
+                  @keydown.enter="finishEditBoard"
+                  @keydown.escape="editingBoardId = null">
+                <span
+                  v-if="boards.length > 1 && editingBoardId !== board.id"
+                  class="board-tab-delete"
+                  @click.stop="showDeleteBoardModal = board.id">✕</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Kanban -->
+      <section class="section kanban-section">
+        <div class="kanban-viewport">
+          <div class="kanban" ref="kanbanRef"
+            :class="{ 'column-dragging': columnDragState.active }">
+            <template v-for="row in columnRows" :key="row.rowIndex">
+              <div
+                class="kanban-row-drop"
+                :class="{ active: columnDragState.active && columnDragState.targetRowIndex === row.rowIndex && columnDragState.targetColId === null }"
+                :data-row-drop-index="row.rowIndex"
+                aria-hidden="true"></div>
+
+              <div class="kanban-row" :data-row-index="row.rowIndex">
+                <div v-for="col in row.columns" :key="col.id"
+                  class="kanban-col"
+                  :class="{
+                    collapsed: isColCollapsed(col),
+                    dragging: columnDragState.active && columnDragState.id === col.id,
+                    'drop-before': columnDragState.active && columnDragState.targetColId === col.id && columnDragState.insertBefore,
+                    'drop-after': columnDragState.active && columnDragState.targetColId === col.id && !columnDragState.insertBefore,
+                  }"
+                  :data-col-id="col.id"
+                  :data-row-index="row.rowIndex"
+                  :style="columnStyle(col)">
+                  <div class="kanban-col-header" @pointerdown="onColumnPointerDown(col, $event)">
+                    <div class="flex items-center gap-8">
+                      <span class="kanban-col-count">{{ itemsByCol(col.id).length }}</span>
+                      <h3 v-if="editingColId !== col.id" class="kanban-col-title" @dblclick="startEditCol(col)">
+                        {{ col.name }}
+                      </h3>
+                      <input
+                        v-else
+                        ref="colEditInputs"
+                        class="col-edit-input"
+                        v-model="editingColName"
+                        @blur="finishEditCol"
+                        @keydown.enter="finishEditCol"
+                        @keydown.escape="editingColId = null">
+                    </div>
+                    <div class="kanban-col-tools">
+                      <button
+                        class="kanban-col-tool"
+                        type="button"
+                        :title="isColCollapsed(col) ? prefs.t('todoExpandColumn') : prefs.t('todoCollapseColumn')"
+                        @pointerdown.stop
+                        @click.stop="toggleColumnCollapsed(col)">
+                        {{ isColCollapsed(col) ? '⌄' : '⌃' }}
+                      </button>
+                      <button
+                        v-if="columns.length > 1"
+                        class="kanban-col-tool kanban-col-delete"
+                        type="button"
+                        :title="prefs.t('todoDeleteColumn')"
+                        @pointerdown.stop
+                        @click.stop="showDeleteColModal = col.id">✕</button>
+                    </div>
+                  </div>
+                  <div class="kanban-cards"
+                    v-show="!isColCollapsed(col)"
+                    :data-col-id="col.id"
+                    :class="{ 'drag-over': dragState.active && dragState.targetColId === col.id }">
+                    <template v-for="(item, idx) in itemsByCol(col.id)" :key="item.id">
+                      <div
+                        v-if="dragState.active && dragState.targetColId === col.id && dragState.insertIndex === idx"
+                        class="kanban-drop-placeholder"></div>
+                      <div
+                        class="kanban-card"
+                        :class="{ dragging: dragState.id === item.id }"
+                        :data-id="item.id"
+                        @pointerdown="onPointerDown(item, $event)"
+                        @click="onCardClick(item)">
+                        <div class="kanban-card-title">{{ item.title }}</div>
+                        <p v-if="item.description" class="kanban-card-desc">{{ item.description }}</p>
+                        <div class="kanban-card-meta">
+                          <span class="kanban-priority" :class="item.priority"></span>
+                          <span class="text-xs">{{ priorityLabel(item.priority) }}</span>
+                          <span class="kanban-card-delete" @pointerdown.stop @click.stop="deleteTodo(item.id)">✕</span>
+                        </div>
+                      </div>
+                    </template>
+                    <div
+                      v-if="dragState.active && dragState.targetColId === col.id && dragState.insertIndex >= itemsByCol(col.id).length"
+                      class="kanban-drop-placeholder"></div>
+                  </div>
+                  <button
+                    class="kanban-resize-handle kanban-resize-handle-x"
+                    type="button"
+                    :title="prefs.t('todoResizeColumnWidth')"
+                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, 'width', $event)"></button>
+                  <button
+                    class="kanban-resize-handle kanban-resize-handle-y"
+                    type="button"
+                    :title="prefs.t('todoResizeColumnHeight')"
+                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, 'height', $event)"></button>
+                  <button
+                    class="kanban-resize-handle kanban-resize-handle-both"
+                    type="button"
+                    :title="prefs.t('todoResizeColumnBoth')"
+                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, 'both', $event)"></button>
+                </div>
+              </div>
+            </template>
+            <div
+              class="kanban-row-drop kanban-row-drop-new"
+              :class="{ active: columnDragState.active && columnDragState.targetRowIndex === nextRowIndex && columnDragState.targetColId === null }"
+              :data-row-drop-index="nextRowIndex"
+              aria-hidden="true"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Ghost -->
+      <div v-if="dragState.active" class="kanban-ghost" :style="ghostStyle">
+        <div class="kanban-card-title">{{ dragState.title }}</div>
+      </div>
+
+      <!-- Task Modal (create & edit) -->
+      <AppModal :visible="showTaskModal" @close="closeTaskModal">
+        <h2 class="heading-md mb-20">{{ editingTodoId ? prefs.t('todoEditTask') : prefs.t('todoAddTask') }}</h2>
+        <div class="form-group mb-16">
+          <label class="form-label">{{ prefs.t('todoTaskName') }}</label>
+          <input class="input" v-model="taskForm.title" :placeholder="prefs.t('todoTaskPlaceholder')">
+        </div>
+        <div class="form-group mb-16">
+          <label class="form-label">{{ prefs.t('todoDescription') }}</label>
+          <textarea class="input" v-model="taskForm.description" rows="2" :placeholder="prefs.t('commonOptional')" style="min-height: 60px;"></textarea>
+        </div>
+        <div class="form-group mb-16">
+          <label class="form-label">{{ prefs.t('todoPriority') }}</label>
+          <select class="input" v-model="taskForm.priority">
+            <option value="high">{{ prefs.t('commonHigh') }}</option>
+            <option value="medium">{{ prefs.t('commonMedium') }}</option>
+            <option value="low">{{ prefs.t('commonLow') }}</option>
+          </select>
+        </div>
+        <div class="form-group mb-20">
+          <label class="form-label">{{ prefs.t('todoColumn') }}</label>
+          <select class="input" v-model="taskForm.column_id">
+            <option v-for="col in columns" :key="col.id" :value="col.id">{{ col.name }}</option>
+          </select>
+        </div>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="closeTaskModal">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-filled" @click="editingTodoId ? saveEditTodo() : addTodo()">
+            {{ editingTodoId ? prefs.t('commonSave') : prefs.t('commonAdd') }}
+          </button>
+        </div>
+      </AppModal>
+
+      <!-- New Board Modal -->
+      <AppModal :visible="showBoardModal" @close="showBoardModal = false">
+        <h2 class="heading-md mb-20">{{ prefs.t('todoNewBoard') }}</h2>
+        <div class="form-group mb-20">
+          <label class="form-label">{{ prefs.t('todoBoardName') }}</label>
+          <input class="input" v-model="boardFormName" :placeholder="prefs.t('todoBoardNamePlaceholder')" @keydown.enter="addBoard">
+        </div>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="showBoardModal = false">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-filled" @click="addBoard">{{ prefs.t('commonCreate') }}</button>
+        </div>
+      </AppModal>
+
+      <!-- New Column Modal -->
+      <AppModal :visible="showColModal" @close="showColModal = false">
+        <h2 class="heading-md mb-20">{{ prefs.t('todoNewColumn') }}</h2>
+        <div class="form-group mb-20">
+          <label class="form-label">{{ prefs.t('todoColumnName') }}</label>
+          <input class="input" v-model="colFormName" :placeholder="prefs.t('todoColumnNamePlaceholder')" @keydown.enter="addColumn">
+        </div>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="showColModal = false">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-filled" @click="addColumn">{{ prefs.t('commonCreate') }}</button>
+        </div>
+      </AppModal>
+
+      <!-- Delete Board Confirm Modal -->
+      <AppModal :visible="showDeleteBoardModal !== null" @close="showDeleteBoardModal = null">
+        <h2 class="heading-md mb-12">{{ prefs.t('todoDeleteBoard') }}</h2>
+        <p class="text-body mb-20">{{ prefs.t('todoDeleteBoardConfirm') }} {{ prefs.t('commonDeleteIrreversible') }}</p>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="showDeleteBoardModal = null">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-danger-filled" @click="doDeleteBoard">{{ prefs.t('commonDelete') }}</button>
+        </div>
+      </AppModal>
+
+      <!-- Delete Column Confirm Modal -->
+      <AppModal :visible="showDeleteColModal !== null" @close="showDeleteColModal = null">
+        <h2 class="heading-md mb-12">{{ prefs.t('todoDeleteColumn') }}</h2>
+        <p class="text-body mb-20">
+          {{ prefs.tr('todoDeleteColumnConfirm', { name: deleteColName }) }}<template v-if="deleteColCount > 0">{{ prefs.tr('todoDeleteColumnTasks', { count: deleteColCount }) }}</template>? {{ prefs.t('commonDeleteIrreversible') }}
+        </p>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="showDeleteColModal = null">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-danger-filled" @click="doDeleteCol">{{ prefs.t('commonDelete') }}</button>
+        </div>
+      </AppModal>
+    </main>
+  </PasswordGate>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { api } from '../composables/useApi'
+import { useAuthStore } from '../stores/auth'
+import PasswordGate from '../components/PasswordGate.vue'
+import AppModal from '../components/AppModal.vue'
+import { usePreferencesStore } from '../stores/preferences'
+
+interface TodoItem {
+  id: number; title: string; description: string
+  priority: string; status: string
+  board_id: number; column_id: number; sort_order: number
+}
+interface Board { id: number; name: string; sort_order: number }
+interface Column {
+  id: number
+  board_id: number
+  name: string
+  sort_order: number
+  row_index?: number
+  collapsed?: number
+  width?: number | null
+  height?: number | null
+}
+
+const authStore = useAuthStore()
+const prefs = usePreferencesStore()
+
+// ── State ──
+const boards = ref<Board[]>([])
+const columns = ref<Column[]>([])
+const todos = ref<TodoItem[]>([])
+const currentBoardId = ref<number>(0)
+const kanbanRef = ref<HTMLElement | null>(null)
+
+// Modals
+const showTaskModal = ref(false)
+const showBoardModal = ref(false)
+const showColModal = ref(false)
+const showDeleteBoardModal = ref<number | null>(null)
+const showDeleteColModal = ref<number | null>(null)
+
+// Forms
+const taskForm = ref({ title: '', description: '', priority: 'medium', column_id: 0 })
+const boardFormName = ref('')
+const colFormName = ref('')
+const editingTodoId = ref<number | null>(null)
+
+// Board editing
+const editingBoardId = ref<number | null>(null)
+const editingBoardName = ref('')
+const boardEditInputs = ref<HTMLInputElement[]>([])
+
+// Column editing
+const editingColId = ref<number | null>(null)
+const editingColName = ref('')
+const colEditInputs = ref<HTMLInputElement[]>([])
+
+// Delete column computed
+const deleteColName = computed(() => {
+  if (!showDeleteColModal.value) return ''
+  return columns.value.find(c => c.id === showDeleteColModal.value)?.name || ''
+})
+const deleteColCount = computed(() => {
+  if (!showDeleteColModal.value) return 0
+  return itemsByCol(showDeleteColModal.value).length
+})
+
+// ── Drag state ──
+const DRAG_THRESHOLD = 5
+const dragState = reactive({
+  active: false,
+  id: null as number | null,
+  title: '',
+  originColId: 0,
+  targetColId: 0,
+  insertIndex: -1,
+  x: 0, y: 0,
+  offsetX: 0, offsetY: 0,
+  cardWidth: 0,
+})
+let pointerStart = { x: 0, y: 0, id: 0, title: '', colId: 0, width: 0 }
+let hasMoved = false
+
+const columnDragState = reactive({
+  active: false,
+  id: null as number | null,
+  targetColId: null as number | null,
+  targetRowIndex: 0,
+  insertBefore: false,
+})
+let columnPointerStart = { x: 0, y: 0, id: 0 }
+let columnHasMoved = false
+
+const columnResizeState = reactive({
+  active: false,
+  id: null as number | null,
+  mode: 'both' as 'width' | 'height' | 'both',
+  startX: 0,
+  startY: 0,
+  startWidth: 0,
+  startHeight: 0,
+})
+
+const ghostStyle = computed(() => ({
+  position: 'fixed' as const,
+  left: `${dragState.x - dragState.offsetX}px`,
+  top: `${dragState.y - dragState.offsetY}px`,
+  width: `${dragState.cardWidth}px`,
+  pointerEvents: 'none' as const,
+  zIndex: 9999,
+}))
+
+// ── Helpers ──
+function itemsByCol(colId: number): TodoItem[] {
+  return todos.value
+    .filter(t => t.column_id === colId)
+    .sort((a, b) => a.sort_order - b.sort_order)
+}
+
+function priorityLabel(p: string) {
+  return p === 'high' ? prefs.t('commonHigh') : p === 'medium' ? prefs.t('commonMedium') : prefs.t('commonLow')
+}
+
+function isColCollapsed(col: Column) {
+  return Number(col.collapsed || 0) === 1
+}
+
+function columnStyle(col: Column) {
+  const width = validColumnWidth(col.width) ? Number(col.width) : null
+  const height = validColumnHeight(col.height) ? Number(col.height) : null
+  return {
+    width: width ? `${width}px` : undefined,
+    flexBasis: width ? `${width}px` : undefined,
+    height: !isColCollapsed(col) && height ? `${height}px` : undefined,
+    minHeight: !isColCollapsed(col) && height ? `${height}px` : undefined,
+  }
+}
+
+function validColumnWidth(width: unknown) {
+  return typeof width === 'number' && Number.isFinite(width) && width >= 240
+}
+
+function validColumnHeight(height: unknown) {
+  return typeof height === 'number' && Number.isFinite(height) && height >= 96
+}
+
+function clampColumnWidth(width: number) {
+  return Math.max(240, Math.min(900, Math.round(width)))
+}
+
+function clampColumnHeight(height: number) {
+  return Math.max(96, Math.min(1400, Math.round(height)))
+}
+
+const columnRows = computed(() => {
+  const grouped = new Map<number, Column[]>()
+  for (const col of columns.value) {
+    const rowIndex = Number(col.row_index || 0)
+    grouped.set(rowIndex, [...(grouped.get(rowIndex) || []), col])
+  }
+
+  return Array.from(grouped.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([rowIndex, rowColumns]) => ({
+      rowIndex,
+      columns: rowColumns.sort((a, b) => a.sort_order - b.sort_order),
+    }))
+})
+
+const nextRowIndex = computed(() => {
+  const maxRow = columns.value.reduce((max, col) => Math.max(max, Number(col.row_index || 0)), -1)
+  return maxRow + 1
+})
+
+function firstColumnId() {
+  return columns.value[0]?.id || 0
+}
+
+function resetTaskForm() {
+  taskForm.value = { title: '', description: '', priority: 'medium', column_id: firstColumnId() }
+}
+
+// ── Data loading ──
+async function loadBoards() {
+  if (!authStore.authed) return
+  try {
+    boards.value = await api<Board[]>('/api/boards')
+    if (boards.value.length && !boards.value.find(b => b.id === currentBoardId.value)) {
+      currentBoardId.value = boards.value[0].id
+    }
+  } catch (e) {
+    console.error('Failed to load boards:', e)
+  }
+}
+
+async function loadBoardData() {
+  if (!authStore.authed) return
+  if (!currentBoardId.value) return
+  try {
+    const [cols, items] = await Promise.all([
+      api<Column[]>(`/api/boards/${currentBoardId.value}/columns`),
+      api<TodoItem[]>(`/api/boards/${currentBoardId.value}/todos`),
+    ])
+    columns.value = cols
+    todos.value = items
+    if (!editingTodoId.value && !cols.some(col => col.id === taskForm.value.column_id)) resetTaskForm()
+  } catch (e) {
+    console.error('Failed to load board data:', e)
+  }
+}
+
+function switchBoard(id: number) {
+  if (id === currentBoardId.value) return
+  currentBoardId.value = id
+  loadBoardData()
+}
+
+async function loadInitialData() {
+  if (!authStore.authed) return
+  await loadBoards()
+  if (currentBoardId.value) await loadBoardData()
+}
+
+// ── Board CRUD ──
+async function addBoard() {
+  if (!boardFormName.value.trim()) return
+  const board = await api<Board>('/api/boards', {
+    method: 'POST',
+    body: JSON.stringify({ name: boardFormName.value.trim() }),
+  })
+  boards.value.push(board)
+  showBoardModal.value = false
+  boardFormName.value = ''
+  switchBoard(board.id)
+}
+
+function startEditBoard(board: Board) {
+  editingBoardId.value = board.id
+  editingBoardName.value = board.name
+  nextTick(() => boardEditInputs.value[0]?.focus())
+}
+
+async function finishEditBoard() {
+  if (!editingBoardId.value) return
+  const name = editingBoardName.value.trim()
+  const id = editingBoardId.value
+  editingBoardId.value = null
+  if (!name) return
+  await api(`/api/boards/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+  const b = boards.value.find(x => x.id === id)
+  if (b) b.name = name
+}
+
+async function doDeleteBoard() {
+  const id = showDeleteBoardModal.value
+  if (!id) return
+  showDeleteBoardModal.value = null
+  await api(`/api/boards/${id}`, { method: 'DELETE' })
+  boards.value = boards.value.filter(b => b.id !== id)
+  if (currentBoardId.value === id && boards.value.length) {
+    switchBoard(boards.value[0].id)
+  }
+}
+
+// ── Column CRUD ──
+async function addColumn() {
+  if (!colFormName.value.trim()) return
+  const col = await api<Column>(`/api/boards/${currentBoardId.value}/columns`, {
+    method: 'POST',
+    body: JSON.stringify({ name: colFormName.value.trim() }),
+  })
+  columns.value.push(col)
+  showColModal.value = false
+  colFormName.value = ''
+}
+
+function startEditCol(col: Column) {
+  editingColId.value = col.id
+  editingColName.value = col.name
+  nextTick(() => colEditInputs.value[0]?.focus())
+}
+
+async function finishEditCol() {
+  if (!editingColId.value) return
+  const name = editingColName.value.trim()
+  const id = editingColId.value
+  editingColId.value = null
+  if (!name) return
+  await api(`/api/columns/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+  const c = columns.value.find(x => x.id === id)
+  if (c) c.name = name
+}
+
+async function toggleColumnCollapsed(col: Column) {
+  const oldValue = Number(col.collapsed || 0)
+  const collapsed = oldValue ? 0 : 1
+  col.collapsed = collapsed
+  try {
+    await api(`/api/columns/${col.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ collapsed }),
+    })
+  } catch {
+    col.collapsed = oldValue
+  }
+}
+
+async function doDeleteCol() {
+  const id = showDeleteColModal.value
+  if (!id) return
+  showDeleteColModal.value = null
+  await api(`/api/columns/${id}`, { method: 'DELETE' })
+  columns.value = columns.value.filter(c => c.id !== id)
+  todos.value = todos.value.filter(t => t.column_id !== id)
+}
+
+// ── Todo CRUD ──
+function openNewTodo() {
+  editingTodoId.value = null
+  resetTaskForm()
+  showTaskModal.value = true
+}
+
+function closeTaskModal() {
+  showTaskModal.value = false
+  editingTodoId.value = null
+  resetTaskForm()
+}
+
+function onCardClick(item: TodoItem) {
+  if (hasMoved) return
+  openEditTodo(item)
+}
+
+function openEditTodo(item: TodoItem) {
+  editingTodoId.value = item.id
+  taskForm.value = {
+    title: item.title,
+    description: item.description || '',
+    priority: item.priority,
+    column_id: item.column_id,
+  }
+  showTaskModal.value = true
+}
+
+async function saveEditTodo() {
+  if (!editingTodoId.value || !taskForm.value.title.trim()) return
+  const id = editingTodoId.value
+  const updates = {
+    title: taskForm.value.title,
+    description: taskForm.value.description,
+    priority: taskForm.value.priority,
+    column_id: taskForm.value.column_id,
+  }
+  const updated = await api<TodoItem>(`/api/todo/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  })
+  const idx = todos.value.findIndex(t => t.id === id)
+  if (idx >= 0) Object.assign(todos.value[idx], updated)
+  closeTaskModal()
+}
+
+async function addTodo() {
+  if (!taskForm.value.title.trim()) return
+  if (!columns.value.some(col => col.id === taskForm.value.column_id)) {
+    taskForm.value.column_id = firstColumnId()
+  }
+  const item = await api<TodoItem>('/api/todo', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...taskForm.value,
+      board_id: currentBoardId.value,
+    }),
+  })
+  todos.value.push(item)
+  closeTaskModal()
+}
+
+async function deleteTodo(id: number) {
+  await api(`/api/todo/${id}`, { method: 'DELETE' })
+  todos.value = todos.value.filter(t => t.id !== id)
+}
+
+// ── Drag & Drop ──
+function onPointerDown(item: TodoItem, e: PointerEvent) {
+  if ((e.target as HTMLElement).closest('.kanban-card-delete')) return
+  if (e.button !== 0) return
+
+  const card = e.currentTarget as HTMLElement
+  const rect = card.getBoundingClientRect()
+  pointerStart = {
+    x: e.clientX, y: e.clientY,
+    id: item.id, title: item.title,
+    colId: item.column_id, width: rect.width,
+  }
+  hasMoved = false
+  dragState.offsetX = e.clientX - rect.left
+  dragState.offsetY = e.clientY - rect.top
+
+  document.addEventListener('pointermove', onPointerMove)
+  document.addEventListener('pointerup', onPointerUp)
+}
+
+function onPointerMove(e: PointerEvent) {
+  const dx = e.clientX - pointerStart.x
+  const dy = e.clientY - pointerStart.y
+  if (!hasMoved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
+
+  if (!hasMoved) {
+    hasMoved = true
+    dragState.active = true
+    dragState.id = pointerStart.id
+    dragState.title = pointerStart.title
+    dragState.originColId = pointerStart.colId
+    dragState.cardWidth = pointerStart.width
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'grabbing'
+  }
+
+  dragState.x = e.clientX
+  dragState.y = e.clientY
+
+  const hit = getDropTarget(e.clientX, e.clientY)
+  dragState.targetColId = hit.colId
+  dragState.insertIndex = hit.index
+}
+
+function getDropTarget(x: number, y: number): { colId: number; index: number } {
+  if (!kanbanRef.value) return { colId: 0, index: 0 }
+  const colEls = kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-col[data-col-id]')
+
+  for (const colEl of colEls) {
+    const colRect = colEl.getBoundingClientRect()
+    if (x < colRect.left || x > colRect.right || y < colRect.top || y > colRect.bottom) continue
+
+    const colId = Number(colEl.dataset.colId)
+    const cards = colEl.querySelectorAll<HTMLElement>('.kanban-card:not(.dragging)')
+    let index = cards.length
+
+    for (let i = 0; i < cards.length; i++) {
+      const cardRect = cards[i].getBoundingClientRect()
+      const midY = cardRect.top + cardRect.height / 2
+      if (y < midY) { index = i; break }
+    }
+
+    if (colId === dragState.originColId) {
+      const items = itemsByCol(colId)
+      const dragIdx = items.findIndex(t => t.id === dragState.id)
+      if (dragIdx >= 0 && index > dragIdx) index++
+    }
+
+    return { colId, index }
+  }
+
+  return { colId: 0, index: 0 }
+}
+
+async function onPointerUp() {
+  document.removeEventListener('pointermove', onPointerMove)
+  document.removeEventListener('pointerup', onPointerUp)
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+
+  if (!hasMoved || !dragState.active) {
+    dragState.active = false
+    dragState.id = null
+    return
+  }
+
+  const id = dragState.id!
+  const targetColId = dragState.targetColId
+  const insertIndex = dragState.insertIndex
+
+  dragState.active = false
+  dragState.id = null
+
+  if (!targetColId) return
+
+  const targetItems = itemsByCol(targetColId).filter(t => t.id !== id)
+  const clampedIndex = Math.min(insertIndex, targetItems.length)
+
+  let newSortOrder: number
+  if (targetItems.length === 0) {
+    newSortOrder = 0
+  } else if (clampedIndex === 0) {
+    newSortOrder = targetItems[0].sort_order - 1000
+  } else if (clampedIndex >= targetItems.length) {
+    newSortOrder = targetItems[targetItems.length - 1].sort_order + 1000
+  } else {
+    newSortOrder = Math.floor((targetItems[clampedIndex - 1].sort_order + targetItems[clampedIndex].sort_order) / 2)
+  }
+
+  const item = todos.value.find(t => t.id === id)
+  if (!item) return
+  const oldColId = item.column_id
+  const oldSortOrder = item.sort_order
+  item.column_id = targetColId
+  item.sort_order = newSortOrder
+
+  try {
+    await api(`/api/todo/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ column_id: targetColId, sort_order: newSortOrder }),
+    })
+  } catch {
+    item.column_id = oldColId
+    item.sort_order = oldSortOrder
+  }
+}
+
+function onTouchPrevent(e: TouchEvent) {
+  if (dragState.active || columnDragState.active || columnResizeState.active) e.preventDefault()
+}
+
+function onColumnPointerDown(col: Column, e: PointerEvent) {
+  if (editingColId.value === col.id) return
+  if (e.button !== 0) return
+  const target = e.target as HTMLElement
+  if (target.closest('button, input, .kanban-cards, .kanban-resize-handle')) return
+
+  columnPointerStart = { x: e.clientX, y: e.clientY, id: col.id }
+  columnHasMoved = false
+
+  document.addEventListener('pointermove', onColumnPointerMove)
+  document.addEventListener('pointerup', onColumnPointerUp)
+}
+
+function onColumnResizePointerDown(col: Column, mode: 'width' | 'height' | 'both', e: PointerEvent) {
+  if (e.button !== 0) return
+  const el = (e.currentTarget as HTMLElement).closest<HTMLElement>('.kanban-col')
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  columnResizeState.active = true
+  columnResizeState.id = col.id
+  columnResizeState.mode = mode
+  columnResizeState.startX = e.clientX
+  columnResizeState.startY = e.clientY
+  columnResizeState.startWidth = rect.width
+  columnResizeState.startHeight = rect.height
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = mode === 'width' ? 'ew-resize' : mode === 'height' ? 'ns-resize' : 'nwse-resize'
+  document.addEventListener('pointermove', onColumnResizePointerMove)
+  document.addEventListener('pointerup', onColumnResizePointerUp)
+}
+
+function onColumnResizePointerMove(e: PointerEvent) {
+  if (!columnResizeState.active || !columnResizeState.id) return
+  const col = columns.value.find(c => c.id === columnResizeState.id)
+  if (!col) return
+
+  if (columnResizeState.mode === 'width' || columnResizeState.mode === 'both') {
+    col.width = clampColumnWidth(columnResizeState.startWidth + e.clientX - columnResizeState.startX)
+  }
+  if (columnResizeState.mode === 'height' || columnResizeState.mode === 'both') {
+    col.height = clampColumnHeight(columnResizeState.startHeight + e.clientY - columnResizeState.startY)
+  }
+}
+
+async function onColumnResizePointerUp() {
+  document.removeEventListener('pointermove', onColumnResizePointerMove)
+  document.removeEventListener('pointerup', onColumnResizePointerUp)
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+
+  if (!columnResizeState.active || !columnResizeState.id) {
+    columnResizeState.active = false
+    columnResizeState.id = null
+    return
+  }
+
+  const id = columnResizeState.id
+  const col = columns.value.find(c => c.id === id)
+  columnResizeState.active = false
+  columnResizeState.id = null
+  if (!col) return
+
+  const updates: { width?: number; height?: number } = {}
+  if (validColumnWidth(col.width)) updates.width = Number(col.width)
+  if (validColumnHeight(col.height)) updates.height = Number(col.height)
+  if (!Object.keys(updates).length) return
+
+  try {
+    const updated = await api<Column>(`/api/columns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    })
+    Object.assign(col, updated)
+  } catch (e) {
+    console.error('Failed to resize column:', e)
+    loadBoardData()
+  }
+}
+
+function onColumnPointerMove(e: PointerEvent) {
+  const dx = e.clientX - columnPointerStart.x
+  const dy = e.clientY - columnPointerStart.y
+  if (!columnHasMoved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
+
+  if (!columnHasMoved) {
+    columnHasMoved = true
+    columnDragState.active = true
+    columnDragState.id = columnPointerStart.id
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'grabbing'
+  }
+
+  const hit = getColumnDropTarget(e.clientX, e.clientY)
+  columnDragState.targetColId = hit.colId
+  columnDragState.targetRowIndex = hit.rowIndex
+  columnDragState.insertBefore = hit.insertBefore
+}
+
+function getColumnDropTarget(x: number, y: number): { colId: number | null; rowIndex: number; insertBefore: boolean } {
+  if (!kanbanRef.value) return { colId: null, rowIndex: 0, insertBefore: false }
+
+  const rowEls = Array.from(kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-row[data-row-index]'))
+  for (let rowIdx = 0; rowIdx < rowEls.length; rowIdx++) {
+    const rowEl = rowEls[rowIdx]
+    const rowRect = rowEl.getBoundingClientRect()
+    if (x < rowRect.left || x > rowRect.right || y < rowRect.top || y > rowRect.bottom) continue
+
+    const rowIndex = Number(rowEl.dataset.rowIndex || 0)
+    const colElsInRow = Array.from(rowEl.querySelectorAll<HTMLElement>('.kanban-col[data-col-id]'))
+
+    for (const el of colElsInRow) {
+      const rect = el.getBoundingClientRect()
+      if (x < rect.left || x > rect.right) continue
+      return {
+        colId: Number(el.dataset.colId),
+        rowIndex,
+        insertBefore: x < rect.left + rect.width / 2,
+      }
+    }
+
+    if (colElsInRow.length) {
+      const first = colElsInRow[0].getBoundingClientRect()
+      const last = colElsInRow[colElsInRow.length - 1].getBoundingClientRect()
+      if (x < first.left) {
+        return { colId: Number(colElsInRow[0].dataset.colId), rowIndex, insertBefore: true }
+      }
+      if (x > last.right) {
+        return { colId: Number(colElsInRow[colElsInRow.length - 1].dataset.colId), rowIndex, insertBefore: false }
+      }
+    }
+
+    return { colId: null, rowIndex, insertBefore: false }
+  }
+
+  const rowDropEls = Array.from(kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-row-drop[data-row-drop-index]'))
+  for (const dropEl of rowDropEls) {
+    const rect = dropEl.getBoundingClientRect()
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+    return {
+      colId: null,
+      rowIndex: Number(dropEl.dataset.rowDropIndex || 0),
+      insertBefore: false,
+    }
+  }
+
+  const colEls = Array.from(kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-col[data-col-id]'))
+
+  for (const colEl of colEls) {
+    const rect = colEl.getBoundingClientRect()
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+    return {
+      colId: Number(colEl.dataset.colId),
+      rowIndex: Number(colEl.dataset.rowIndex || 0),
+      insertBefore: x < rect.left + rect.width / 2,
+    }
+  }
+
+  if (!colEls.length) return { colId: null, rowIndex: 0, insertBefore: false }
+  const sameRow = colEls
+    .map(el => ({ el, rect: el.getBoundingClientRect() }))
+    .filter(({ rect }) => y >= rect.top - 16 && y <= rect.bottom + 16)
+
+  if (sameRow.length) {
+    const nearest = sameRow.reduce((best, next) => {
+      const bestDistance = Math.min(Math.abs(x - best.rect.left), Math.abs(x - best.rect.right))
+      const nextDistance = Math.min(Math.abs(x - next.rect.left), Math.abs(x - next.rect.right))
+      return nextDistance < bestDistance ? next : best
+    })
+    return {
+      colId: Number(nearest.el.dataset.colId),
+      rowIndex: Number(nearest.el.dataset.rowIndex || 0),
+      insertBefore: x < nearest.rect.left + nearest.rect.width / 2,
+    }
+  }
+
+  const nearest = colEls
+    .map(el => ({ el, rect: el.getBoundingClientRect() }))
+    .reduce((best, next) => {
+      const bestDistance = Math.abs(y - (best.rect.top + best.rect.height / 2))
+      const nextDistance = Math.abs(y - (next.rect.top + next.rect.height / 2))
+      return nextDistance < bestDistance ? next : best
+    })
+  return {
+    colId: Number(nearest.el.dataset.colId),
+    rowIndex: Number(nearest.el.dataset.rowIndex || 0),
+    insertBefore: x < nearest.rect.left + nearest.rect.width / 2,
+  }
+}
+
+async function onColumnPointerUp() {
+  document.removeEventListener('pointermove', onColumnPointerMove)
+  document.removeEventListener('pointerup', onColumnPointerUp)
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+
+  if (!columnHasMoved || !columnDragState.active) {
+    columnDragState.active = false
+    columnDragState.id = null
+    columnDragState.targetColId = null
+    return
+  }
+
+  const id = columnDragState.id!
+  const targetColId = columnDragState.targetColId
+  const targetRowIndex = columnDragState.targetRowIndex
+  const insertBefore = columnDragState.insertBefore
+
+  columnDragState.active = false
+  columnDragState.id = null
+  columnDragState.targetColId = null
+
+  const moving = columns.value.find(c => c.id === id)
+  if (!moving) return
+
+  const oldRowIndex = Number(moving.row_index || 0)
+  if (targetColId === id && targetRowIndex === oldRowIndex) return
+
+  const rowColumns = columns.value
+    .filter(c => c.id !== id && Number(c.row_index || 0) === targetRowIndex)
+    .sort((a, b) => a.sort_order - b.sort_order)
+
+  let insertIndex = rowColumns.length
+  if (targetColId !== null) {
+    const targetIndex = rowColumns.findIndex(c => c.id === targetColId)
+    if (targetIndex < 0) return
+    insertIndex = insertBefore ? targetIndex : targetIndex + 1
+  }
+
+  const reordered = [...rowColumns]
+  reordered.splice(insertIndex, 0, moving)
+
+  const prev = insertIndex > 0 ? reordered[insertIndex - 1] : null
+  const next = insertIndex < reordered.length - 1 ? reordered[insertIndex + 1] : null
+
+  let newSortOrder: number
+  if (!prev && !next) {
+    newSortOrder = 0
+  } else if (!prev) {
+    newSortOrder = next!.sort_order - 1000
+  } else if (!next) {
+    newSortOrder = prev.sort_order + 1000
+  } else {
+    newSortOrder = Math.floor((prev.sort_order + next.sort_order) / 2)
+  }
+
+  const oldSortOrder = moving.sort_order
+  moving.row_index = targetRowIndex
+  moving.sort_order = newSortOrder
+  columns.value = [...columns.value].sort((a, b) => Number(a.row_index || 0) - Number(b.row_index || 0) || a.sort_order - b.sort_order)
+
+  try {
+    await api(`/api/columns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ row_index: targetRowIndex, sort_order: newSortOrder }),
+    })
+  } catch {
+    moving.row_index = oldRowIndex
+    moving.sort_order = oldSortOrder
+    columns.value = [...columns.value].sort((a, b) => Number(a.row_index || 0) - Number(b.row_index || 0) || a.sort_order - b.sort_order)
+  }
+}
+
+// ── Lifecycle ──
+watch(() => columns.value, (cols) => {
+  if (!editingTodoId.value && !cols.some(col => col.id === taskForm.value.column_id)) resetTaskForm()
+})
+
+watch(() => authStore.authed, (authed) => {
+  if (authed) loadInitialData()
+}, { immediate: true })
+
+onMounted(() => {
+  if (!authStore.checked) {
+    authStore.check()
+  }
+  document.addEventListener('touchmove', onTouchPrevent, { passive: false })
+})
+
+onUnmounted(() => {
+  document.removeEventListener('touchmove', onTouchPrevent)
+  document.removeEventListener('pointermove', onPointerMove)
+  document.removeEventListener('pointerup', onPointerUp)
+  document.removeEventListener('pointermove', onColumnPointerMove)
+  document.removeEventListener('pointerup', onColumnPointerUp)
+  document.removeEventListener('pointermove', onColumnResizePointerMove)
+  document.removeEventListener('pointerup', onColumnResizePointerUp)
+})
+</script>
+
+<style scoped>
+/* Board tabs */
+.board-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.board-tab {
+  padding: 6px 16px;
+  border: var(--border);
+  border-radius: 100px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.board-tab:hover { background: var(--color-bg-hover, #f5f5f5); }
+.board-tab.active {
+  background: var(--color-ink);
+  color: #fff;
+}
+
+.board-tab-input {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  width: 80px;
+  outline: none;
+}
+
+.board-tab-delete {
+  font-size: 0.65rem;
+  opacity: 0;
+  transition: opacity .15s;
+  cursor: pointer;
+}
+.board-tab:hover .board-tab-delete { opacity: .5; }
+.board-tab-delete:hover { opacity: 1 !important; }
+
+.board-tab-add {
+  border-style: dashed;
+  opacity: .5;
+}
+.board-tab-add:hover { opacity: 1; }
+
+.board-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Kanban viewport ── */
+.kanban-section {
+  padding-top: 16px;
+  padding-bottom: 32px;
+}
+
+.kanban-viewport {
+  --kanban-col-width: clamp(280px, calc((100vw - 80px) / 4), 470px);
+  width: 100%;
+  padding: 0 24px;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.kanban {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: calc(100vh - 300px);
+}
+
+.kanban-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  min-width: 100%;
+  width: max-content;
+}
+
+.kanban-row-drop {
+  min-height: 18px;
+  width: 100%;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-sm);
+  transition: background .15s ease, border-color .15s ease, min-height .15s ease;
+}
+
+.kanban-row-drop.active,
+.kanban.column-dragging .kanban-row-drop:hover {
+  min-height: 40px;
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+.kanban-row-drop-new {
+  min-height: 36px;
+}
+
+/* ── Columns ── */
+.kanban-col {
+  background: var(--color-card);
+  border: var(--border);
+  border-radius: var(--radius-md);
+  width: var(--kanban-col-width);
+  min-width: 240px;
+  flex: 0 0 var(--kanban-col-width);
+  min-height: calc(100vh - 320px);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: opacity .15s ease, box-shadow .15s ease, min-height .15s ease;
+}
+
+.kanban-col.collapsed {
+  min-height: auto;
+}
+
+.kanban-col.dragging {
+  opacity: .45;
+  box-shadow: var(--shadow-md);
+}
+
+.kanban-col.drop-before::before,
+.kanban-col.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  z-index: 2;
+}
+
+.kanban-col.drop-before::before { left: -10px; }
+.kanban-col.drop-after::after { right: -10px; }
+
+.kanban.column-dragging .kanban-col-header {
+  cursor: grabbing;
+}
+
+.kanban-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: var(--border);
+  gap: 10px;
+  cursor: grab;
+  user-select: none;
+}
+
+.kanban-col.collapsed .kanban-col-header {
+  border-bottom: none;
+}
+
+.kanban-col-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.kanban-col.collapsed .kanban-col-title {
+  max-width: 190px;
+}
+
+.kanban-col-count {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.kanban-col-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.kanban-col-tool {
+  width: 24px;
+  height: 24px;
+  border: var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, opacity .15s ease;
+}
+
+.kanban-col-tool:hover {
+  background: var(--color-bg-hover, #f5f5f5);
+  color: var(--color-ink);
+}
+
+/* ── Cards area ── */
+.kanban-cards {
+  padding: 10px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 80px;
+  border-radius: var(--radius-sm);
+  transition: background .15s ease;
+}
+
+.kanban-cards.drag-over {
+  background: var(--color-accent-light);
+}
+
+/* ── Cards ── */
+.kanban-card {
+  background: var(--color-card);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  cursor: grab;
+  transition: box-shadow .2s var(--ease), transform .2s var(--ease);
+}
+
+.kanban-card:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.kanban-card:active { cursor: grabbing; }
+
+.kanban-card.dragging {
+  opacity: .2;
+  transform: scale(.96);
+  transition: opacity .15s, transform .15s;
+}
+
+.kanban-card-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.kanban-card-desc {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.kanban-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(32, 33, 36, .06);
+}
+
+.kanban-card-delete {
+  margin-left: auto;
+  cursor: pointer;
+  opacity: 0;
+  font-size: .75rem;
+  transition: opacity .15s;
+}
+.kanban-card:hover .kanban-card-delete { opacity: .4; }
+.kanban-card-delete:hover { opacity: .8 !important; }
+
+/* ── Priority dots ── */
+.kanban-priority {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kanban-priority.high { background: var(--color-danger); }
+.kanban-priority.medium { background: var(--color-warn); }
+.kanban-priority.low { background: var(--color-accent); }
+
+/* ── Drag helpers ── */
+.kanban-drop-placeholder {
+  height: 52px;
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-light);
+  opacity: .45;
+  flex-shrink: 0;
+}
+
+.kanban-ghost {
+  background: var(--color-card);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  box-shadow: 0 16px 40px rgba(32, 33, 36, .18);
+  transform: rotate(2deg) scale(1.04);
+  opacity: .92;
+}
+
+/* ── Column editing ── */
+.col-edit-input {
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  width: 120px;
+  outline: none;
+}
+
+.kanban-col-delete {
+  opacity: 0;
+}
+.kanban-col:hover .kanban-col-delete { opacity: .4; }
+.kanban-col-delete:hover { opacity: .8 !important; }
+
+.kanban-resize-handle {
+  position: absolute;
+  opacity: 0;
+  z-index: 3;
+  transition: opacity .15s ease, background .15s ease;
+}
+
+.kanban-col:hover .kanban-resize-handle,
+.kanban-resize-handle:focus-visible {
+  opacity: 1;
+}
+
+.kanban-resize-handle-x {
+  top: 58px;
+  right: -5px;
+  bottom: 18px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.kanban-resize-handle-y {
+  left: 18px;
+  right: 58px;
+  bottom: -5px;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.kanban-resize-handle-both {
+  right: -5px;
+  bottom: -5px;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+}
+
+.kanban-resize-handle-x::after,
+.kanban-resize-handle-y::after,
+.kanban-resize-handle-both::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(32, 33, 36, .28);
+}
+
+.kanban-resize-handle-x::after {
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+}
+
+.kanban-resize-handle-y::after {
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  height: 2px;
+}
+
+.kanban-resize-handle-both::after {
+  right: 6px;
+  bottom: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+@media (max-width: 720px) {
+  .kanban-col {
+    width: calc(100vw - 48px);
+    flex-basis: calc(100vw - 48px);
+  }
+}
+</style>
