@@ -2,7 +2,7 @@
   <PasswordGate>
     <main>
       <!-- Header -->
-      <section class="section">
+      <section class="section diary-header-section">
         <div class="container">
           <div class="card card-pad-lg fade-up diary-header-card">
             <div class="flex justify-between items-center" style="flex-wrap: wrap; gap: 16px;">

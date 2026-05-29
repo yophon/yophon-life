@@ -18,7 +18,14 @@
   color: var(--color-danger);
 }
 
+.diary-header-section {
+  position: relative;
+  z-index: 20;
+}
+
 .diary-header-card {
+  position: relative;
+  z-index: 20;
   overflow: visible;
 }
 
