@@ -10,11 +10,39 @@
                   <p class="text-sm"></p>
                   <h1 class="heading-xl">{{ prefs.t('diaryTitle') }}</h1>
                 </div>
-                <button class="btn btn-filled" @click="openModal()">+ {{ prefs.t('diaryWrite') }}</button>
+                <button class="diary-add-btn" :title="prefs.t('diaryWrite')" @click="openModal()">+</button>
               </div>
+            </div>
 
-              <div class="diary-controls">
-                <div class="finance-month-nav">
+            <div v-if="!searchMode" class="card card-pad-sm diary-panel">
+              <div class="diary-filter-panel">
+                <span class="text-sm" style="font-weight:500;">{{ prefs.t('diaryFilter') }}</span>
+                <div class="diary-filter-group">
+                  <div class="mood-filter">
+                    <button v-for="m in MOODS" :key="m.emoji"
+                      :class="{ active: filterMood === m.emoji }"
+                      @click="filterMood = filterMood === m.emoji ? '' : m.emoji">
+                      {{ m.emoji }}
+                    </button>
+                  </div>
+                </div>
+                <div class="diary-filter-group" v-if="monthTags.length > 0">
+                  <div class="tag-row">
+                    <span v-for="t in monthTags" :key="t" class="tag"
+                      :class="{ active: filterTag === t }"
+                      @click="filterTag = filterTag === t ? '' : t">
+                      {{ t }}
+                    </span>
+                  </div>
+                </div>
+                <button v-if="filterMood || filterTag" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
+              </div>
+            </div>
+
+            <div v-if="!searchMode" class="card card-pad-lg diary-panel">
+              <div class="diary-calendar-head">
+                <h3 class="heading-md">{{ prefs.t('diaryCalendar') }}</h3>
+                <div class="finance-month-nav diary-month-nav">
                   <button @click="prevMonth">←</button>
                   <div class="month-picker" ref="monthPickerRef">
                     <button
@@ -46,36 +74,7 @@
                   <button @click="nextMonth">→</button>
                 </div>
                 <button v-if="!isCurrentMonth" class="btn btn-sm" @click="goToday">{{ prefs.t('commonBackThisMonth') }}</button>
-                <div class="diary-search">
-                  <span class="search-icon">🔍</span>
-                  <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
-                </div>
               </div>
-            </div>
-
-            <div v-if="!searchMode" class="card card-pad-sm diary-panel">
-              <div class="diary-filter-panel">
-                <span class="text-sm" style="font-weight:500;">{{ prefs.t('diaryFilter') }}</span>
-                <div class="mood-filter">
-                  <button v-for="m in MOODS" :key="m.emoji"
-                    :class="{ active: filterMood === m.emoji }"
-                    @click="filterMood = filterMood === m.emoji ? '' : m.emoji">
-                    {{ m.emoji }}
-                  </button>
-                </div>
-                <div class="tag-row" v-if="monthTags.length > 0">
-                  <span v-for="t in monthTags" :key="t" class="tag"
-                    :class="{ active: filterTag === t }"
-                    @click="filterTag = filterTag === t ? '' : t">
-                    {{ t }}
-                  </span>
-                </div>
-                <button v-if="filterMood || filterTag" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
-              </div>
-            </div>
-
-            <div v-if="!searchMode" class="card card-pad-lg diary-panel">
-              <h3 class="heading-md mb-16">{{ prefs.t('diaryCalendar') }}</h3>
               <div class="diary-calendar">
                 <div v-for="d in WEEKDAYS" :key="d" class="diary-calendar-header">{{ d }}</div>
                 <div v-for="(cell, i) in calendarCells" :key="i"
@@ -94,29 +93,31 @@
 
             <div v-if="!searchMode" class="card card-pad-lg diary-panel">
               <h3 class="heading-md mb-16">{{ prefs.t('diaryMoodTrend') }}</h3>
-              <div v-if="moodStats.length > 0" class="pie-chart-wrap diary-pie-wrap">
-                <div class="pie-chart" :style="{ background: moodPieGradient }"></div>
-                <div class="pie-legend">
-                  <div v-for="(s, i) in moodStats" :key="s.mood" class="pie-legend-item">
+              <div v-if="moodStats.length > 0" class="diary-stats-panel">
+                <div class="diary-stat-hero">
+                  <div class="pie-chart" :style="{ background: moodPieGradient }"></div>
+                  <div>
+                    <p class="text-xs">{{ prefs.t('diaryMonthCount') }}</p>
+                    <p class="stat-number">{{ entries.length }}</p>
+                  </div>
+                  <div v-if="topMood">
+                    <p class="text-xs">{{ prefs.t('diaryTopMood') }}</p>
+                    <p class="diary-top-mood">{{ topMood.mood }}</p>
+                  </div>
+                </div>
+                <div class="diary-mood-list">
+                  <div v-for="(s, i) in moodStats" :key="s.mood" class="diary-mood-stat">
                     <span class="pie-legend-dot" :style="{ background: PIE_COLORS[i % PIE_COLORS.length] }"></span>
                     <span>{{ s.mood }} {{ s.mood_label }}</span>
-                    <span class="legend-pct">{{ s.count }}{{ prefs.t('commonArticleUnit') }}</span>
+                    <span>{{ s.count }}{{ prefs.t('commonArticleUnit') }}</span>
                   </div>
                 </div>
               </div>
               <div v-else class="empty-state" style="padding:30px 0;">
                 <p class="text-sm">{{ prefs.t('diaryEmptyMonth') }}</p>
               </div>
-              <div v-if="entries.length > 0" class="diary-stat-row">
+              <div v-if="topTags.length > 0" class="diary-stat-row">
                 <div>
-                  <p class="text-xs">{{ prefs.t('diaryMonthCount') }}</p>
-                  <p class="stat-number" style="font-size:1.5rem;">{{ entries.length }}</p>
-                </div>
-                <div v-if="topMood">
-                  <p class="text-xs">{{ prefs.t('diaryTopMood') }}</p>
-                  <p style="font-size:1.5rem;line-height:1;">{{ topMood.mood }}</p>
-                </div>
-                <div v-if="topTags.length > 0">
                   <p class="text-xs mb-8">{{ prefs.t('diaryTopTags') }}</p>
                   <div class="tag-row">
                     <span v-for="t in topTags" :key="t" class="tag" style="font-size:.7rem;">{{ t }}</span>
@@ -127,6 +128,10 @@
           </aside>
 
           <section class="diary-content fade-up">
+            <div class="diary-search diary-content-search">
+              <span class="search-icon">🔍</span>
+              <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
+            </div>
             <div v-if="searchMode" class="diary-search-hint">
               <span class="text-sm">{{ prefs.tr('commonSearchResult', { query: searchQuery, count: filteredEntries.length }) }}</span>
               <button class="btn btn-sm" @click="clearSearch">{{ prefs.t('commonClear') }}</button>
@@ -735,25 +740,30 @@ onUnmounted(() => {
 .diary-title-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 14px;
   flex-wrap: wrap;
 }
 
-.diary-controls {
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.diary-add-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
 
-.diary-controls .finance-month-nav {
-  align-self: flex-start;
-}
-
-.diary-controls .diary-search {
-  max-width: none;
-  width: 100%;
+.diary-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  background: var(--color-accent);
 }
 
 .diary-filter-panel {
@@ -762,8 +772,47 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.diary-filter-group {
+  padding: 10px;
+  border: var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-tag-bg);
+}
+
+.diary-filter-group .mood-filter,
+.diary-filter-group .tag-row {
+  gap: 8px;
+}
+
+.diary-filter-group .mood-filter button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-light);
+  background: var(--color-card);
+}
+
+.diary-filter-group .mood-filter button.active {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+}
+
+.diary-filter-group .tag.active {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: #fff;
+}
+
 .diary-content {
   min-width: 0;
+}
+
+.diary-content-search {
+  width: min(420px, 100%);
+  max-width: none;
+  margin: 0 0 14px auto;
 }
 
 .diary-search-hint {
@@ -779,18 +828,71 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.diary-pie-wrap {
-  align-items: flex-start;
+.diary-calendar-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  text-align: center;
 }
 
-.diary-pie-wrap .pie-chart {
+.diary-month-nav {
+  justify-content: center;
+}
+
+.diary-month-nav .month-label,
+.diary-month-nav .month-picker-trigger {
+  min-width: 150px;
+}
+
+.diary-stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.diary-stat-hero {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.diary-stat-hero .pie-chart {
   width: 128px;
   height: 128px;
 }
 
+.diary-stat-hero .stat-number {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.diary-top-mood {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.diary-mood-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diary-mood-stat {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: var(--border-light);
+  font-size: .82rem;
+}
+
 .diary-stat-row {
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 16px;
+  padding-top: 14px;
   border-top: var(--border-light);
   display: flex;
   gap: 16px;
@@ -892,6 +994,21 @@ onUnmounted(() => {
     max-height: none;
     overflow: visible;
     padding-right: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .diary-stat-hero {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .diary-stat-hero .pie-chart {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+
+  .diary-content-search {
+    width: 100%;
   }
 }
 </style>
