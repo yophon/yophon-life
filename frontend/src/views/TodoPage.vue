@@ -1335,6 +1335,7 @@ onUnmounted(() => {
 
 /* ── Columns ── */
 .kanban-col {
+  --collapsed-col-width: 64px;
   background: var(--color-card);
   border: var(--border);
   border-radius: var(--radius-md);
@@ -1346,12 +1347,13 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   position: relative;
-  transition: opacity .15s ease, box-shadow .15s ease, min-height .15s ease;
+  transition: opacity .15s ease, box-shadow .15s ease, width .18s ease, flex-basis .18s ease;
 }
 
 .kanban-col.collapsed {
-  height: auto;
-  align-self: flex-start;
+  width: var(--collapsed-col-width) !important;
+  min-width: var(--collapsed-col-width);
+  flex-basis: var(--collapsed-col-width) !important;
 }
 
 .kanban-col.dragging {
@@ -1390,6 +1392,11 @@ onUnmounted(() => {
 }
 
 .kanban-col.collapsed .kanban-col-header {
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  flex-direction: column;
+  padding: 14px 8px;
   border-bottom: none;
 }
 
@@ -1403,7 +1410,11 @@ onUnmounted(() => {
 }
 
 .kanban-col.collapsed .kanban-col-title {
-  max-width: 190px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  max-width: none;
+  max-height: calc(100% - 86px);
+  overflow: hidden;
 }
 
 .kanban-col-count {
@@ -1424,6 +1435,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.kanban-col.collapsed .kanban-col-tools {
+  flex-direction: column;
+  margin-top: auto;
+}
+
+.kanban-col.collapsed .kanban-col-delete,
+.kanban-col.collapsed .kanban-resize-handle {
+  display: none;
 }
 
 .kanban-col-tool {
