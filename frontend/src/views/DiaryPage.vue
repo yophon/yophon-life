@@ -707,6 +707,8 @@ onUnmounted(() => {
 .diary-workspace-section {
   padding-top: 24px;
   padding-bottom: 24px;
+  height: calc(100dvh - 62px);
+  min-height: 0;
 }
 
 .diary-workspace {
@@ -714,7 +716,7 @@ onUnmounted(() => {
   max-width: 1720px;
   margin: 0 auto;
   padding: 0 24px;
-  height: calc(100dvh - 88px);
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 20px;
@@ -992,6 +994,7 @@ onUnmounted(() => {
 @media (max-width: 980px) {
   .diary-workspace-section {
     padding-bottom: 24px;
+    height: auto;
   }
 
   .diary-workspace {
