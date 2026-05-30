@@ -1,6 +1,6 @@
 <template>
   <PasswordGate>
-    <main>
+    <main class="diary-page">
       <section class="section diary-workspace-section">
         <div class="diary-workspace">
           <aside class="diary-sidebar fade-up">
@@ -704,11 +704,18 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.diary-workspace-section {
-  padding-top: 24px;
-  padding-bottom: 24px;
-  height: calc(100dvh - 62px);
+.diary-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+}
+
+.diary-workspace-section {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
 }
 
 .diary-workspace {
@@ -992,9 +999,13 @@ onUnmounted(() => {
 }
 
 @media (max-width: 980px) {
+  .diary-page {
+    display: block;
+    overflow: visible;
+  }
+
   .diary-workspace-section {
     padding-bottom: 24px;
-    height: auto;
   }
 
   .diary-workspace {
