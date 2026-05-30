@@ -44,7 +44,7 @@
 
       <!-- Kanban -->
       <section class="section kanban-section">
-        <div class="kanban-viewport" ref="kanbanViewportRef" @wheel.prevent="onKanbanWheel">
+        <div class="kanban-viewport" ref="kanbanViewportRef" @wheel="onKanbanWheel">
           <div class="kanban" ref="kanbanRef"
             :class="{ 'column-dragging': columnDragState.active }">
             <template v-for="row in columnRows" :key="row.rowIndex">
@@ -60,8 +60,8 @@
                   :data-col-id="col.id"
                   :data-row-index="row.rowIndex"
                   :style="columnStyle(col)">
-                  <div class="kanban-col-header" @pointerdown="onColumnPointerDown(col, $event)">
-                    <div class="flex items-center gap-8">
+                  <div class="kanban-col-header" @pointerdown="onColumnPointerDown(col, $event)" @click="onColumnHeaderClick(col)">
+                    <div class="kanban-col-label">
                       <span class="kanban-col-count">{{ itemsByCol(col.id).length }}</span>
                       <h3 v-if="editingColId !== col.id" class="kanban-col-title" @dblclick="startEditCol(col)">
                         {{ col.name }}
@@ -832,7 +832,17 @@ function onTouchPrevent(e: TouchEvent) {
 function onKanbanWheel(e: WheelEvent) {
   const viewport = kanbanViewportRef.value
   if (!viewport) return
-  viewport.scrollLeft += e.deltaY || e.deltaX
+  const cards = (e.target as HTMLElement | null)?.closest<HTMLElement>('.kanban-cards')
+  if (cards && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+    const canScrollUp = cards.scrollTop > 0
+    const canScrollDown = cards.scrollTop + cards.clientHeight < cards.scrollHeight - 1
+    if ((e.deltaY < 0 && canScrollUp) || (e.deltaY > 0 && canScrollDown)) {
+      return
+    }
+  }
+
+  e.preventDefault()
+  viewport.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
 }
 
 function onBoardPointerDown(board: Board, e: PointerEvent) {
@@ -957,6 +967,7 @@ async function onBoardPointerUp() {
 
 function onColumnPointerDown(col: Column, e: PointerEvent) {
   if (editingColId.value === col.id) return
+  if (isColCollapsed(col)) return
   if (e.button !== 0) return
   const target = e.target as HTMLElement
   if (target.closest('button, input, .kanban-cards, .kanban-resize-handle')) return
@@ -966,6 +977,10 @@ function onColumnPointerDown(col: Column, e: PointerEvent) {
 
   document.addEventListener('pointermove', onColumnPointerMove)
   document.addEventListener('pointerup', onColumnPointerUp)
+}
+
+function onColumnHeaderClick(col: Column) {
+  if (isColCollapsed(col)) toggleColumnCollapsed(col)
 }
 
 function onColumnResizePointerDown(col: Column, e: PointerEvent) {
@@ -1354,6 +1369,7 @@ onUnmounted(() => {
   width: var(--collapsed-col-width) !important;
   min-width: var(--collapsed-col-width);
   flex-basis: var(--collapsed-col-width) !important;
+  overflow: hidden;
 }
 
 .kanban-col.dragging {
@@ -1396,8 +1412,24 @@ onUnmounted(() => {
   align-items: center;
   justify-content: flex-start;
   flex-direction: column;
-  padding: 14px 8px;
+  gap: 12px;
+  padding: 12px 8px;
   border-bottom: none;
+  overflow: hidden;
+}
+
+.kanban-col-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kanban-col.collapsed .kanban-col-label {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
 .kanban-col-title {
@@ -1413,8 +1445,9 @@ onUnmounted(() => {
   writing-mode: vertical-rl;
   text-orientation: mixed;
   max-width: none;
-  max-height: calc(100% - 86px);
+  max-height: 100%;
   overflow: hidden;
+  line-height: 1.2;
 }
 
 .kanban-col-count {
@@ -1439,7 +1472,7 @@ onUnmounted(() => {
 
 .kanban-col.collapsed .kanban-col-tools {
   flex-direction: column;
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .kanban-col.collapsed .kanban-col-delete,
