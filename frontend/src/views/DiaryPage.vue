@@ -14,7 +14,7 @@
               </div>
             </div>
 
-            <div class="card card-pad-sm diary-panel">
+            <div class="card card-pad-lg diary-panel diary-side-card">
               <div class="diary-filter-panel">
                 <div class="diary-search">
                   <span class="search-icon">🔍</span>
@@ -42,7 +42,7 @@
               </div>
             </div>
 
-            <div v-if="!searchMode" class="card card-pad-lg diary-panel">
+            <div v-if="!searchMode" class="card card-pad-lg diary-panel diary-side-card">
               <div class="diary-calendar-head">
                 <div class="finance-month-nav diary-month-nav">
                   <button @click="prevMonth">←</button>
@@ -93,7 +93,7 @@
               </div>
             </div>
 
-            <div v-if="!searchMode" class="card card-pad-lg diary-panel">
+            <div v-if="!searchMode" class="card card-pad-lg diary-panel diary-side-card">
               <div v-if="moodStats.length > 0" class="diary-stats-panel">
                 <div class="diary-stat-hero">
                   <div class="pie-chart" :style="{ background: moodPieGradient }"></div>
@@ -734,6 +734,10 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.diary-side-card {
+  padding: 24px;
+}
+
 .diary-title-row {
   display: flex;
   justify-content: space-between;
@@ -769,7 +773,7 @@ onUnmounted(() => {
 }
 
 .diary-filter-panel > * + * {
-  border-top: var(--border);
+  border-top: var(--border-light);
   margin-top: 12px;
   padding-top: 12px;
 }
@@ -794,13 +798,13 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: var(--border-light);
+  border: 0;
   background: var(--color-card);
 }
 
 .diary-filter-group .mood-filter button.active {
-  border-color: var(--color-ink);
   background: var(--color-ink);
+  box-shadow: inset 0 0 0 1px var(--color-ink);
 }
 
 .diary-filter-group .tag.active {
