@@ -46,7 +46,6 @@ export function createKanbanRoutes(db: Database) {
         row_index: t.Optional(t.Number()),
         collapsed: t.Optional(t.Number()),
         width: t.Optional(t.Nullable(t.Number())),
-        height: t.Optional(t.Nullable(t.Number())),
       }),
     })
     .delete("/api/columns/:id", ({ params }) => {

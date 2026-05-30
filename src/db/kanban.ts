@@ -1,13 +1,11 @@
 import type { Database } from "bun:sqlite";
 
-const COLUMN_ALLOWED_FIELDS = ["name", "sort_order", "row_index", "collapsed", "width", "height"] as const;
+const COLUMN_ALLOWED_FIELDS = ["name", "sort_order", "row_index", "collapsed", "width"] as const;
 const BOARD_ALLOWED_FIELDS = ["name", "sort_order"] as const;
 const SORT_GAP = 1000;
 const MIN_SORT_GAP = 2;
 const MIN_COLUMN_WIDTH = 240;
 const MAX_COLUMN_WIDTH = 900;
-const MIN_COLUMN_HEIGHT = 96;
-const MAX_COLUMN_HEIGHT = 1400;
 
 export type KanbanActivityAction = "create" | "update" | "delete" | "move";
 export type KanbanActivityEntity = "board" | "column" | "todo";
@@ -162,7 +160,7 @@ export function createColumn(db: Database, boardId: number, name: string): any {
   return { id, board_id: boardId, name, sort_order, row_index: 0, collapsed: 0, width: null, height: null };
 }
 
-export function updateColumn(db: Database, id: number, updates: { name?: string; sort_order?: number; row_index?: number; collapsed?: number; width?: number | null; height?: number | null }): any {
+export function updateColumn(db: Database, id: number, updates: { name?: string; sort_order?: number; row_index?: number; collapsed?: number; width?: number | null }): any {
   updates = normalizeColumnUpdates(updates);
   const keys = Object.keys(updates).filter((k) => COLUMN_ALLOWED_FIELDS.includes(k as any));
   if (keys.length === 0) return null;
@@ -263,14 +261,13 @@ function normalizeBoardUpdates(updates: { name?: string; sort_order?: number }) 
   return next;
 }
 
-function normalizeColumnUpdates(updates: { name?: string; sort_order?: number; row_index?: number; collapsed?: number; width?: number | null; height?: number | null }) {
+function normalizeColumnUpdates(updates: { name?: string; sort_order?: number; row_index?: number; collapsed?: number; width?: number | null }) {
   const next: any = { ...updates };
   if (next.name !== undefined) next.name = normalizeName(next.name, "INVALID_COLUMN_NAME");
   if (next.sort_order !== undefined) next.sort_order = normalizeSortOrder(next.sort_order);
   if (next.row_index !== undefined) next.row_index = normalizeRowIndex(next.row_index);
   if (next.collapsed !== undefined) next.collapsed = normalizeCollapsed(next.collapsed);
   if (next.width !== undefined) next.width = clampDimension(next.width, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
-  if (next.height !== undefined) next.height = clampDimension(next.height, MIN_COLUMN_HEIGHT, MAX_COLUMN_HEIGHT);
   return next;
 }
 

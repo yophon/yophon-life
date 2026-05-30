@@ -133,17 +133,7 @@
                     class="kanban-resize-handle kanban-resize-handle-x"
                     type="button"
                     :title="prefs.t('todoResizeColumnWidth')"
-                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, 'width', $event)"></button>
-                  <button
-                    class="kanban-resize-handle kanban-resize-handle-y"
-                    type="button"
-                    :title="prefs.t('todoResizeColumnHeight')"
-                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, 'height', $event)"></button>
-                  <button
-                    class="kanban-resize-handle kanban-resize-handle-both"
-                    type="button"
-                    :title="prefs.t('todoResizeColumnBoth')"
-                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, 'both', $event)"></button>
+                    @pointerdown.stop.prevent="onColumnResizePointerDown(col, $event)"></button>
                 </div>
               </div>
             </template>
@@ -276,7 +266,6 @@ interface Column {
   row_index?: number
   collapsed?: number
   width?: number | null
-  height?: number | null
 }
 
 const authStore = useAuthStore()
@@ -355,11 +344,8 @@ let columnHasMoved = false
 const columnResizeState = reactive({
   active: false,
   id: null as number | null,
-  mode: 'both' as 'width' | 'height' | 'both',
   startX: 0,
-  startY: 0,
   startWidth: 0,
-  startHeight: 0,
 })
 
 const boardDragState = reactive({
@@ -429,12 +415,9 @@ function isColCollapsed(col: Column) {
 
 function columnStyle(col: Column) {
   const width = validColumnWidth(col.width) ? Number(col.width) : null
-  const height = validColumnHeight(col.height) ? Number(col.height) : null
   return {
     width: width ? `${width}px` : undefined,
     flexBasis: width ? `${width}px` : undefined,
-    height: !isColCollapsed(col) && height ? `${height}px` : undefined,
-    minHeight: !isColCollapsed(col) && height ? `${height}px` : undefined,
   }
 }
 
@@ -442,16 +425,8 @@ function validColumnWidth(width: unknown) {
   return typeof width === 'number' && Number.isFinite(width) && width >= 240
 }
 
-function validColumnHeight(height: unknown) {
-  return typeof height === 'number' && Number.isFinite(height) && height >= 96
-}
-
 function clampColumnWidth(width: number) {
   return Math.max(240, Math.min(900, Math.round(width)))
-}
-
-function clampColumnHeight(height: number) {
-  return Math.max(96, Math.min(1400, Math.round(height)))
 }
 
 const columnRows = computed(() => {
@@ -993,20 +968,17 @@ function onColumnPointerDown(col: Column, e: PointerEvent) {
   document.addEventListener('pointerup', onColumnPointerUp)
 }
 
-function onColumnResizePointerDown(col: Column, mode: 'width' | 'height' | 'both', e: PointerEvent) {
+function onColumnResizePointerDown(col: Column, e: PointerEvent) {
   if (e.button !== 0) return
   const el = (e.currentTarget as HTMLElement).closest<HTMLElement>('.kanban-col')
   if (!el) return
   const rect = el.getBoundingClientRect()
   columnResizeState.active = true
   columnResizeState.id = col.id
-  columnResizeState.mode = mode
   columnResizeState.startX = e.clientX
-  columnResizeState.startY = e.clientY
   columnResizeState.startWidth = rect.width
-  columnResizeState.startHeight = rect.height
   document.body.style.userSelect = 'none'
-  document.body.style.cursor = mode === 'width' ? 'ew-resize' : mode === 'height' ? 'ns-resize' : 'nwse-resize'
+  document.body.style.cursor = 'ew-resize'
   document.addEventListener('pointermove', onColumnResizePointerMove)
   document.addEventListener('pointerup', onColumnResizePointerUp)
 }
@@ -1016,12 +988,7 @@ function onColumnResizePointerMove(e: PointerEvent) {
   const col = columns.value.find(c => c.id === columnResizeState.id)
   if (!col) return
 
-  if (columnResizeState.mode === 'width' || columnResizeState.mode === 'both') {
-    col.width = clampColumnWidth(columnResizeState.startWidth + e.clientX - columnResizeState.startX)
-  }
-  if (columnResizeState.mode === 'height' || columnResizeState.mode === 'both') {
-    col.height = clampColumnHeight(columnResizeState.startHeight + e.clientY - columnResizeState.startY)
-  }
+  col.width = clampColumnWidth(columnResizeState.startWidth + e.clientX - columnResizeState.startX)
 }
 
 async function onColumnResizePointerUp() {
@@ -1042,9 +1009,8 @@ async function onColumnResizePointerUp() {
   columnResizeState.id = null
   if (!col) return
 
-  const updates: { width?: number; height?: number } = {}
+  const updates: { width?: number } = {}
   if (validColumnWidth(col.width)) updates.width = Number(col.width)
-  if (validColumnHeight(col.height)) updates.height = Number(col.height)
   if (!Object.keys(updates).length) return
 
   try {
@@ -1687,25 +1653,7 @@ onUnmounted(() => {
   cursor: ew-resize;
 }
 
-.kanban-resize-handle-y {
-  left: 18px;
-  right: 58px;
-  bottom: -5px;
-  height: 10px;
-  cursor: ns-resize;
-}
-
-.kanban-resize-handle-both {
-  right: -5px;
-  bottom: -5px;
-  width: 22px;
-  height: 22px;
-  cursor: nwse-resize;
-}
-
-.kanban-resize-handle-x::after,
-.kanban-resize-handle-y::after,
-.kanban-resize-handle-both::after {
+.kanban-resize-handle-x::after {
   content: '';
   position: absolute;
   border-radius: 999px;
@@ -1717,21 +1665,6 @@ onUnmounted(() => {
   bottom: 0;
   left: 4px;
   width: 2px;
-}
-
-.kanban-resize-handle-y::after {
-  left: 0;
-  right: 0;
-  bottom: 4px;
-  height: 2px;
-}
-
-.kanban-resize-handle-both::after {
-  right: 6px;
-  bottom: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
 }
 
 @media (max-width: 720px) {
