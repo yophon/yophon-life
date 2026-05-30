@@ -706,9 +706,7 @@ onUnmounted(() => {
 <style scoped>
 .diary-workspace-section {
   padding-top: 24px;
-  padding-bottom: 24px;
-  height: calc(100vh - 72px);
-  overflow: hidden;
+  padding-bottom: 0;
 }
 
 .diary-workspace {
@@ -716,21 +714,20 @@ onUnmounted(() => {
   max-width: 1720px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 100%;
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 20px;
   align-items: stretch;
-  min-height: 0;
 }
 
 .diary-sidebar {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 0;
+  max-height: calc(100vh - 104px);
   overflow-y: auto;
   padding-right: 4px;
+  padding-bottom: 24px;
 }
 
 .diary-panel {
@@ -818,9 +815,10 @@ onUnmounted(() => {
 
 .diary-content {
   min-width: 0;
-  min-height: 0;
+  max-height: calc(100vh - 104px);
   overflow-y: auto;
   padding-right: 4px;
+  padding-bottom: 24px;
 }
 
 .diary-search-hint {
@@ -993,14 +991,12 @@ onUnmounted(() => {
 
 @media (max-width: 980px) {
   .diary-workspace-section {
-    height: auto;
-    overflow: visible;
+    padding-bottom: 24px;
   }
 
   .diary-workspace {
     grid-template-columns: 1fr;
     padding: 0 16px;
-    height: auto;
   }
 
   .diary-sidebar {
