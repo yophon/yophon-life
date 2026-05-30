@@ -2,51 +2,46 @@
   <PasswordGate>
     <main>
       <!-- Header -->
-      <section class="section">
-        <div class="container">
-          <div class="card card-pad-lg fade-up">
-            <div class="flex justify-between items-center" style="flex-wrap: wrap; gap: 12px;">
-              <div>
-                <p class="text-sm"></p>
-                <h1 class="heading-xl">{{ prefs.t('todoTitle') }}</h1>
-              </div>
-              <div class="board-actions">
-                <button class="btn btn-sm" @click="showBoardModal = true">+ {{ prefs.t('todoAddBoard') }}</button>
-                <button class="btn btn-sm" @click="showColModal = true">+ {{ prefs.t('todoAddColumn') }}</button>
-                <button class="btn btn-sm btn-filled" @click="() => openNewTodo()">+ {{ prefs.t('todoAddTask') }}</button>
-              </div>
-            </div>
-            <div class="board-tabs" style="margin-top: 20px;">
-              <div
-                v-for="board in boards" :key="board.id"
-                class="board-tab"
-                :class="{
-                  active: currentBoardId === board.id,
-                  dragging: boardDragState.active && boardDragState.id === board.id,
-                  'drop-before': boardDragState.active && boardDragState.targetId === board.id && boardDragState.insertBefore,
-                  'drop-after': boardDragState.active && boardDragState.targetId === board.id && !boardDragState.insertBefore,
-                }"
-                :data-board-id="board.id"
-                @pointerdown="onBoardPointerDown(board, $event)"
-                @click="switchBoard(board.id)"
-                @dblclick="startEditBoard(board)">
-                <span v-if="editingBoardId !== board.id">{{ board.name }}</span>
-                <input
-                  v-else
-                  ref="boardEditInputs"
-                  class="board-tab-input"
-                  v-model="editingBoardName"
-                  @blur="finishEditBoard"
-                  @keydown.enter="finishEditBoard"
-                  @keydown.escape="editingBoardId = null">
-                <span
-                  v-if="boards.length > 1 && editingBoardId !== board.id"
-                  class="board-tab-delete"
-                  @click.stop="showDeleteBoardModal = board.id">✕</span>
-              </div>
-            </div>
-            <p v-if="boardError" class="board-error" role="alert">{{ boardError }}</p>
+      <section class="board-toolbar-section">
+        <div class="board-toolbar fade-up">
+          <div class="board-toolbar-title">
+            <h1>{{ prefs.t('todoTitle') }}</h1>
           </div>
+          <div class="board-tabs" aria-label="Boards">
+            <div
+              v-for="board in boards" :key="board.id"
+              class="board-tab"
+              :class="{
+                active: currentBoardId === board.id,
+                dragging: boardDragState.active && boardDragState.id === board.id,
+                'drop-before': boardDragState.active && boardDragState.targetId === board.id && boardDragState.insertBefore,
+                'drop-after': boardDragState.active && boardDragState.targetId === board.id && !boardDragState.insertBefore,
+              }"
+              :data-board-id="board.id"
+              @pointerdown="onBoardPointerDown(board, $event)"
+              @click="switchBoard(board.id)"
+              @dblclick="startEditBoard(board)">
+              <span v-if="editingBoardId !== board.id">{{ board.name }}</span>
+              <input
+                v-else
+                ref="boardEditInputs"
+                class="board-tab-input"
+                v-model="editingBoardName"
+                @blur="finishEditBoard"
+                @keydown.enter="finishEditBoard"
+                @keydown.escape="editingBoardId = null">
+              <span
+                v-if="boards.length > 1 && editingBoardId !== board.id"
+                class="board-tab-delete"
+                @click.stop="showDeleteBoardModal = board.id">✕</span>
+            </div>
+          </div>
+          <div class="board-actions">
+            <button class="btn btn-sm" @click="showBoardModal = true">+ {{ prefs.t('todoAddBoard') }}</button>
+            <button class="btn btn-sm" @click="showColModal = true">+ {{ prefs.t('todoAddColumn') }}</button>
+            <button class="btn btn-sm btn-filled" @click="() => openNewTodo()">+ {{ prefs.t('todoAddTask') }}</button>
+          </div>
+          <p v-if="boardError" class="board-error" role="alert">{{ boardError }}</p>
         </div>
       </section>
 
@@ -1297,12 +1292,47 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Toolbar */
+.board-toolbar-section {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 12px 24px 8px;
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: var(--border-light);
+}
+
+.board-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 1680px;
+  margin: 0 auto;
+}
+
+.board-toolbar-title {
+  min-width: 0;
+}
+
+.board-toolbar-title h1 {
+  font-size: 1.05rem;
+  line-height: 1.2;
+  font-weight: 700;
+  margin: 0;
+  white-space: nowrap;
+}
+
 /* Board tabs */
 .board-tabs {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
   align-items: center;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
 }
 
 .board-tab {
@@ -1374,17 +1404,20 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
 }
 
 .board-error {
-  margin-top: 14px;
+  grid-column: 2 / 4;
+  margin: -2px 0 0;
   color: var(--color-danger);
   font-size: .85rem;
 }
 
 /* ── Kanban viewport ── */
 .kanban-section {
-  padding-top: 16px;
+  padding-top: 18px;
   padding-bottom: 32px;
 }
 
@@ -1797,6 +1830,29 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
+  .board-toolbar-section {
+    padding: 10px 14px 8px;
+  }
+
+  .board-toolbar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .board-tabs {
+    order: 3;
+  }
+
+  .board-actions {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .board-error {
+    grid-column: auto;
+  }
+
   .kanban-col {
     width: calc(100vw - 48px);
     flex-basis: calc(100vw - 48px);
