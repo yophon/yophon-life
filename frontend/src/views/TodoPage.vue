@@ -1,12 +1,9 @@
 <template>
   <PasswordGate>
-    <main>
+    <main class="todo-page">
       <!-- Header -->
       <section class="board-toolbar-section">
         <div class="board-toolbar fade-up">
-          <div class="board-toolbar-title">
-            <h1>{{ prefs.t('todoTitle') }}</h1>
-          </div>
           <div class="board-tabs" aria-label="Boards">
             <div
               v-for="board in boards" :key="board.id"
@@ -51,12 +48,6 @@
           <div class="kanban" ref="kanbanRef"
             :class="{ 'column-dragging': columnDragState.active }">
             <template v-for="row in columnRows" :key="row.rowIndex">
-              <div
-                class="kanban-row-drop"
-                :class="{ active: columnDragState.active && columnDragState.targetRowIndex === row.rowIndex && columnDragState.targetColId === null }"
-                :data-row-drop-index="row.rowIndex"
-                aria-hidden="true"></div>
-
               <div class="kanban-row" :data-row-index="row.rowIndex">
                 <div v-for="col in row.columns" :key="col.id"
                   class="kanban-col"
@@ -156,11 +147,6 @@
                 </div>
               </div>
             </template>
-            <div
-              class="kanban-row-drop kanban-row-drop-new"
-              :class="{ active: columnDragState.active && columnDragState.targetRowIndex === nextRowIndex && columnDragState.targetColId === null }"
-              :data-row-drop-index="nextRowIndex"
-              aria-hidden="true"></div>
           </div>
         </div>
       </section>
@@ -468,23 +454,10 @@ function clampColumnHeight(height: number) {
 }
 
 const columnRows = computed(() => {
-  const grouped = new Map<number, Column[]>()
-  for (const col of columns.value) {
-    const rowIndex = Number(col.row_index || 0)
-    grouped.set(rowIndex, [...(grouped.get(rowIndex) || []), col])
-  }
-
-  return Array.from(grouped.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([rowIndex, rowColumns]) => ({
-      rowIndex,
-      columns: rowColumns.sort((a, b) => a.sort_order - b.sort_order),
-    }))
-})
-
-const nextRowIndex = computed(() => {
-  const maxRow = columns.value.reduce((max, col) => Math.max(max, Number(col.row_index || 0)), -1)
-  return maxRow + 1
+  return [{
+    rowIndex: 0,
+    columns: [...columns.value].sort((a, b) => a.sort_order - b.sort_order),
+  }]
 })
 
 function firstColumnId() {
@@ -1101,90 +1074,28 @@ function onColumnPointerMove(e: PointerEvent) {
 function getColumnDropTarget(x: number, y: number): { colId: number | null; rowIndex: number; insertBefore: boolean } {
   if (!kanbanRef.value) return { colId: null, rowIndex: 0, insertBefore: false }
 
-  const rowEls = Array.from(kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-row[data-row-index]'))
-  for (let rowIdx = 0; rowIdx < rowEls.length; rowIdx++) {
-    const rowEl = rowEls[rowIdx]
-    const rowRect = rowEl.getBoundingClientRect()
-    if (x < rowRect.left || x > rowRect.right || y < rowRect.top || y > rowRect.bottom) continue
-
-    const rowIndex = Number(rowEl.dataset.rowIndex || 0)
-    const colElsInRow = Array.from(rowEl.querySelectorAll<HTMLElement>('.kanban-col[data-col-id]'))
-
-    for (const el of colElsInRow) {
-      const rect = el.getBoundingClientRect()
-      if (x < rect.left || x > rect.right) continue
-      return {
-        colId: Number(el.dataset.colId),
-        rowIndex,
-        insertBefore: x < rect.left + rect.width / 2,
-      }
-    }
-
-    if (colElsInRow.length) {
-      const first = colElsInRow[0].getBoundingClientRect()
-      const last = colElsInRow[colElsInRow.length - 1].getBoundingClientRect()
-      if (x < first.left) {
-        return { colId: Number(colElsInRow[0].dataset.colId), rowIndex, insertBefore: true }
-      }
-      if (x > last.right) {
-        return { colId: Number(colElsInRow[colElsInRow.length - 1].dataset.colId), rowIndex, insertBefore: false }
-      }
-    }
-
-    return { colId: null, rowIndex, insertBefore: false }
-  }
-
-  const rowDropEls = Array.from(kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-row-drop[data-row-drop-index]'))
-  for (const dropEl of rowDropEls) {
-    const rect = dropEl.getBoundingClientRect()
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
-    return {
-      colId: null,
-      rowIndex: Number(dropEl.dataset.rowDropIndex || 0),
-      insertBefore: false,
-    }
-  }
-
   const colEls = Array.from(kanbanRef.value.querySelectorAll<HTMLElement>('.kanban-col[data-col-id]'))
-
   for (const colEl of colEls) {
     const rect = colEl.getBoundingClientRect()
     if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
     return {
       colId: Number(colEl.dataset.colId),
-      rowIndex: Number(colEl.dataset.rowIndex || 0),
+      rowIndex: 0,
       insertBefore: x < rect.left + rect.width / 2,
     }
   }
 
   if (!colEls.length) return { colId: null, rowIndex: 0, insertBefore: false }
-  const sameRow = colEls
-    .map(el => ({ el, rect: el.getBoundingClientRect() }))
-    .filter(({ rect }) => y >= rect.top - 16 && y <= rect.bottom + 16)
-
-  if (sameRow.length) {
-    const nearest = sameRow.reduce((best, next) => {
-      const bestDistance = Math.min(Math.abs(x - best.rect.left), Math.abs(x - best.rect.right))
-      const nextDistance = Math.min(Math.abs(x - next.rect.left), Math.abs(x - next.rect.right))
-      return nextDistance < bestDistance ? next : best
-    })
-    return {
-      colId: Number(nearest.el.dataset.colId),
-      rowIndex: Number(nearest.el.dataset.rowIndex || 0),
-      insertBefore: x < nearest.rect.left + nearest.rect.width / 2,
-    }
-  }
-
   const nearest = colEls
     .map(el => ({ el, rect: el.getBoundingClientRect() }))
     .reduce((best, next) => {
-      const bestDistance = Math.abs(y - (best.rect.top + best.rect.height / 2))
-      const nextDistance = Math.abs(y - (next.rect.top + next.rect.height / 2))
+      const bestDistance = Math.abs(x - (best.rect.left + best.rect.width / 2))
+      const nextDistance = Math.abs(x - (next.rect.left + next.rect.width / 2))
       return nextDistance < bestDistance ? next : best
     })
   return {
     colId: Number(nearest.el.dataset.colId),
-    rowIndex: Number(nearest.el.dataset.rowIndex || 0),
+    rowIndex: 0,
     insertBefore: x < nearest.rect.left + nearest.rect.width / 2,
   }
 }
@@ -1218,7 +1129,7 @@ async function onColumnPointerUp() {
   if (targetColId === id && targetRowIndex === oldRowIndex) return
 
   const rowColumns = columns.value
-    .filter(c => c.id !== id && Number(c.row_index || 0) === targetRowIndex)
+    .filter(c => c.id !== id)
     .sort((a, b) => a.sort_order - b.sort_order)
 
   let insertIndex = rowColumns.length
@@ -1248,7 +1159,7 @@ async function onColumnPointerUp() {
   const oldSortOrder = moving.sort_order
   moving.row_index = targetRowIndex
   moving.sort_order = newSortOrder
-  columns.value = [...columns.value].sort((a, b) => Number(a.row_index || 0) - Number(b.row_index || 0) || a.sort_order - b.sort_order)
+  columns.value = [...columns.value].sort((a, b) => a.sort_order - b.sort_order)
 
   try {
     await api(`/api/columns/${id}`, {
@@ -1258,7 +1169,7 @@ async function onColumnPointerUp() {
   } catch {
     moving.row_index = oldRowIndex
     moving.sort_order = oldSortOrder
-    columns.value = [...columns.value].sort((a, b) => Number(a.row_index || 0) - Number(b.row_index || 0) || a.sort_order - b.sort_order)
+    columns.value = [...columns.value].sort((a, b) => a.sort_order - b.sort_order)
   }
 }
 
@@ -1292,6 +1203,13 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.todo-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* Toolbar */
 .board-toolbar-section {
   position: sticky;
@@ -1305,23 +1223,11 @@ onUnmounted(() => {
 
 .board-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(160px, 1fr) auto;
   align-items: center;
   gap: 14px;
   max-width: 1680px;
   margin: 0 auto;
-}
-
-.board-toolbar-title {
-  min-width: 0;
-}
-
-.board-toolbar-title h1 {
-  font-size: 1.05rem;
-  line-height: 1.2;
-  font-weight: 700;
-  margin: 0;
-  white-space: nowrap;
 }
 
 /* Board tabs */
@@ -1409,7 +1315,7 @@ onUnmounted(() => {
 }
 
 .board-error {
-  grid-column: 2 / 4;
+  grid-column: 1 / 3;
   margin: -2px 0 0;
   color: var(--color-danger);
   font-size: .85rem;
@@ -1417,51 +1323,37 @@ onUnmounted(() => {
 
 /* ── Kanban viewport ── */
 .kanban-section {
-  padding-top: 18px;
-  padding-bottom: 32px;
+  flex: 1;
+  min-height: 0;
+  padding-top: 12px;
+  padding-bottom: 16px;
 }
 
 .kanban-viewport {
   --kanban-col-width: clamp(280px, calc((100vw - 80px) / 4), 470px);
   width: 100%;
+  height: 100%;
   padding: 0 24px;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
 }
 
 .kanban {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: calc(100vh - 300px);
+  height: 100%;
+  min-height: 0;
+  width: max-content;
+  min-width: 100%;
 }
 
 .kanban-row {
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 16px;
+  height: 100%;
+  min-height: 0;
   min-width: 100%;
   width: max-content;
-}
-
-.kanban-row-drop {
-  min-height: 18px;
-  width: 100%;
-  border: 1px dashed transparent;
-  border-radius: var(--radius-sm);
-  transition: background .15s ease, border-color .15s ease, min-height .15s ease;
-}
-
-.kanban-row-drop.active,
-.kanban.column-dragging .kanban-row-drop:hover {
-  min-height: 40px;
-  border-color: var(--color-accent);
-  background: var(--color-accent-light);
-}
-
-.kanban-row-drop-new {
-  min-height: 36px;
 }
 
 /* ── Columns ── */
@@ -1472,7 +1364,8 @@ onUnmounted(() => {
   width: var(--kanban-col-width);
   min-width: 240px;
   flex: 0 0 var(--kanban-col-width);
-  min-height: calc(100vh - 320px);
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1480,7 +1373,8 @@ onUnmounted(() => {
 }
 
 .kanban-col.collapsed {
-  min-height: auto;
+  height: auto;
+  align-self: flex-start;
 }
 
 .kanban-col.dragging {
@@ -1583,8 +1477,8 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  min-height: 80px;
   border-radius: var(--radius-sm);
   transition: background .15s ease;
 }
@@ -1840,10 +1734,11 @@ onUnmounted(() => {
   }
 
   .board-tabs {
-    order: 3;
+    order: 2;
   }
 
   .board-actions {
+    order: 1;
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
