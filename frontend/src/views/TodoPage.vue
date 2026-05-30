@@ -120,6 +120,7 @@
                         :data-id="item.id"
                         @pointerdown="onPointerDown(item, $event)"
                         @click="onCardClick(item)">
+                        <span class="kanban-card-id">#{{ item.id }}</span>
                         <div class="kanban-card-title">{{ item.title }}</div>
                         <p v-if="item.description" class="kanban-card-desc">{{ item.description }}</p>
                         <div class="kanban-card-meta">
@@ -1472,6 +1473,7 @@ onUnmounted(() => {
   border-radius: var(--radius-sm);
   padding: 16px 18px;
   cursor: grab;
+  position: relative;
   transition: box-shadow .2s var(--ease), transform .2s var(--ease);
 }
 
@@ -1519,6 +1521,27 @@ onUnmounted(() => {
 }
 .kanban-card:hover .kanban-card-delete { opacity: .4; }
 .kanban-card-delete:hover { opacity: .8 !important; }
+
+.kanban-card-id {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px 6px;
+  border: var(--border-light);
+  border-radius: 999px;
+  background: var(--color-card);
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+
+.kanban-card:hover .kanban-card-id {
+  opacity: .8;
+}
 
 .kanban-add-card {
   width: 100%;

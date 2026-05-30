@@ -1,66 +1,80 @@
 <template>
   <PasswordGate>
     <main>
-      <!-- Header -->
-      <section class="section diary-header-section">
-        <div class="container">
-          <div class="card card-pad-lg fade-up diary-header-card">
-            <div class="flex justify-between items-center" style="flex-wrap: wrap; gap: 16px;">
-              <div>
-                <p class="text-sm"></p>
-                <h1 class="heading-xl">{{ prefs.t('diaryTitle') }}</h1>
+      <section class="section diary-workspace-section">
+        <div class="diary-workspace">
+          <aside class="diary-sidebar fade-up">
+            <div class="card card-pad-lg diary-panel diary-header-card">
+              <div class="diary-title-row">
+                <div>
+                  <p class="text-sm"></p>
+                  <h1 class="heading-xl">{{ prefs.t('diaryTitle') }}</h1>
+                </div>
+                <button class="btn btn-filled" @click="openModal()">+ {{ prefs.t('diaryWrite') }}</button>
               </div>
-              <button class="btn btn-filled" @click="openModal()">+ {{ prefs.t('diaryWrite') }}</button>
-            </div>
-            <div style="margin-top:20px;flex-wrap:wrap;" class="flex items-center gap-16">
-              <div class="finance-month-nav">
-                <button @click="prevMonth">←</button>
-                <div class="month-picker" ref="monthPickerRef">
-                  <button
-                    class="month-picker-trigger"
-                    type="button"
-                    :aria-label="prefs.t('diaryPickMonth')"
-                    :aria-expanded="showMonthPicker"
-                    @click="toggleMonthPicker">
-                    {{ formatMonthLabel(viewYear, viewMonth) }}
-                  </button>
-                  <div v-if="showMonthPicker" class="month-picker-popover">
-                    <div class="month-picker-head">
-                      <button type="button" :title="prefs.t('diaryPrevYear')" @click="pickerYear--">←</button>
-                      <span>{{ formatYearLabel(pickerYear) }}</span>
-                      <button type="button" :title="prefs.t('diaryNextYear')" @click="pickerYear++">→</button>
-                    </div>
-                    <div class="month-picker-grid">
-                      <button
-                        v-for="month in 12"
-                        :key="month"
-                        type="button"
-                        :class="{ active: pickerYear === viewYear && month === viewMonth }"
-                        @click="selectPickerMonth(month)">
-                        {{ formatShortMonth(month) }}
-                      </button>
+
+              <div class="diary-controls">
+                <div class="finance-month-nav">
+                  <button @click="prevMonth">←</button>
+                  <div class="month-picker" ref="monthPickerRef">
+                    <button
+                      class="month-picker-trigger"
+                      type="button"
+                      :aria-label="prefs.t('diaryPickMonth')"
+                      :aria-expanded="showMonthPicker"
+                      @click="toggleMonthPicker">
+                      {{ formatMonthLabel(viewYear, viewMonth) }}
+                    </button>
+                    <div v-if="showMonthPicker" class="month-picker-popover">
+                      <div class="month-picker-head">
+                        <button type="button" :title="prefs.t('diaryPrevYear')" @click="pickerYear--">←</button>
+                        <span>{{ formatYearLabel(pickerYear) }}</span>
+                        <button type="button" :title="prefs.t('diaryNextYear')" @click="pickerYear++">→</button>
+                      </div>
+                      <div class="month-picker-grid">
+                        <button
+                          v-for="month in 12"
+                          :key="month"
+                          type="button"
+                          :class="{ active: pickerYear === viewYear && month === viewMonth }"
+                          @click="selectPickerMonth(month)">
+                          {{ formatShortMonth(month) }}
+                        </button>
+                      </div>
                     </div>
                   </div>
+                  <button @click="nextMonth">→</button>
                 </div>
-                <button @click="nextMonth">→</button>
-              </div>
-              <button v-if="!isCurrentMonth" class="btn btn-sm" @click="goToday">{{ prefs.t('commonBackThisMonth') }}</button>
-              <div style="flex:1;"></div>
-              <div class="diary-search">
-                <span class="search-icon">🔍</span>
-                <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
+                <button v-if="!isCurrentMonth" class="btn btn-sm" @click="goToday">{{ prefs.t('commonBackThisMonth') }}</button>
+                <div class="diary-search">
+                  <span class="search-icon">🔍</span>
+                  <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <!-- Calendar + Stats -->
-      <section style="padding: 20px 0;">
-        <div class="container">
-          <div class="grid-2 fade-up" style="gap:16px;" v-if="!searchMode">
-            <!-- Calendar -->
-            <div class="card card-pad-lg">
+            <div v-if="!searchMode" class="card card-pad-sm diary-panel">
+              <div class="diary-filter-panel">
+                <span class="text-sm" style="font-weight:500;">{{ prefs.t('diaryFilter') }}</span>
+                <div class="mood-filter">
+                  <button v-for="m in MOODS" :key="m.emoji"
+                    :class="{ active: filterMood === m.emoji }"
+                    @click="filterMood = filterMood === m.emoji ? '' : m.emoji">
+                    {{ m.emoji }}
+                  </button>
+                </div>
+                <div class="tag-row" v-if="monthTags.length > 0">
+                  <span v-for="t in monthTags" :key="t" class="tag"
+                    :class="{ active: filterTag === t }"
+                    @click="filterTag = filterTag === t ? '' : t">
+                    {{ t }}
+                  </span>
+                </div>
+                <button v-if="filterMood || filterTag" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
+              </div>
+            </div>
+
+            <div v-if="!searchMode" class="card card-pad-lg diary-panel">
               <h3 class="heading-md mb-16">{{ prefs.t('diaryCalendar') }}</h3>
               <div class="diary-calendar">
                 <div v-for="d in WEEKDAYS" :key="d" class="diary-calendar-header">{{ d }}</div>
@@ -78,10 +92,9 @@
               </div>
             </div>
 
-            <!-- Mood Stats -->
-            <div class="card card-pad-lg">
+            <div v-if="!searchMode" class="card card-pad-lg diary-panel">
               <h3 class="heading-md mb-16">{{ prefs.t('diaryMoodTrend') }}</h3>
-              <div v-if="moodStats.length > 0" class="pie-chart-wrap">
+              <div v-if="moodStats.length > 0" class="pie-chart-wrap diary-pie-wrap">
                 <div class="pie-chart" :style="{ background: moodPieGradient }"></div>
                 <div class="pie-legend">
                   <div v-for="(s, i) in moodStats" :key="s.mood" class="pie-legend-item">
@@ -94,69 +107,32 @@
               <div v-else class="empty-state" style="padding:30px 0;">
                 <p class="text-sm">{{ prefs.t('diaryEmptyMonth') }}</p>
               </div>
-              <div v-if="entries.length > 0" style="margin-top:20px;padding-top:16px;border-top:var(--border-light);">
-                <div class="flex gap-16" style="flex-wrap:wrap;">
-                  <div>
-                    <p class="text-xs">{{ prefs.t('diaryMonthCount') }}</p>
-                    <p class="stat-number" style="font-size:1.5rem;">{{ entries.length }}</p>
-                  </div>
-                  <div v-if="topMood">
-                    <p class="text-xs">{{ prefs.t('diaryTopMood') }}</p>
-                    <p style="font-size:1.5rem;line-height:1;">{{ topMood.mood }}</p>
-                  </div>
-                  <div v-if="topTags.length > 0">
-                    <p class="text-xs mb-8">{{ prefs.t('diaryTopTags') }}</p>
-                    <div class="tag-row">
-                      <span v-for="t in topTags" :key="t" class="tag" style="font-size:.7rem;">{{ t }}</span>
-                    </div>
+              <div v-if="entries.length > 0" class="diary-stat-row">
+                <div>
+                  <p class="text-xs">{{ prefs.t('diaryMonthCount') }}</p>
+                  <p class="stat-number" style="font-size:1.5rem;">{{ entries.length }}</p>
+                </div>
+                <div v-if="topMood">
+                  <p class="text-xs">{{ prefs.t('diaryTopMood') }}</p>
+                  <p style="font-size:1.5rem;line-height:1;">{{ topMood.mood }}</p>
+                </div>
+                <div v-if="topTags.length > 0">
+                  <p class="text-xs mb-8">{{ prefs.t('diaryTopTags') }}</p>
+                  <div class="tag-row">
+                    <span v-for="t in topTags" :key="t" class="tag" style="font-size:.7rem;">{{ t }}</span>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </aside>
 
-      <!-- Filters -->
-      <section v-if="!searchMode" style="padding-bottom:20px;">
-        <div class="container fade-up">
-          <div class="card card-pad-sm">
-            <div class="flex items-center gap-16" style="flex-wrap:wrap;">
-              <span class="text-sm" style="font-weight:500;">{{ prefs.t('diaryFilter') }}</span>
-              <div class="mood-filter">
-                <button v-for="m in MOODS" :key="m.emoji"
-                  :class="{ active: filterMood === m.emoji }"
-                  @click="filterMood = filterMood === m.emoji ? '' : m.emoji">
-                  {{ m.emoji }}
-                </button>
-              </div>
-              <div class="tag-row" v-if="monthTags.length > 0">
-                <span v-for="t in monthTags" :key="t" class="tag"
-                  :class="{ active: filterTag === t }"
-                  @click="filterTag = filterTag === t ? '' : t">
-                  {{ t }}
-                </span>
-              </div>
-              <button v-if="filterMood || filterTag" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
+          <section class="diary-content fade-up">
+            <div v-if="searchMode" class="diary-search-hint">
+              <span class="text-sm">{{ prefs.tr('commonSearchResult', { query: searchQuery, count: filteredEntries.length }) }}</span>
+              <button class="btn btn-sm" @click="clearSearch">{{ prefs.t('commonClear') }}</button>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <!-- Search result hint -->
-      <section v-if="searchMode" style="padding:0 0 16px;">
-        <div class="container">
-          <div class="flex items-center gap-12">
-            <span class="text-sm">{{ prefs.tr('commonSearchResult', { query: searchQuery, count: filteredEntries.length }) }}</span>
-            <button class="btn btn-sm" @click="clearSearch">{{ prefs.t('commonClear') }}</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Diary List -->
-      <section class="section" style="padding-top: 0;">
-        <div class="container">
-          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="diary-list">
             <div v-for="entry in filteredEntries" :key="entry.id ?? `linked-${entry.date}`" class="card card-pad fade-up"
               :class="{ 'diary-linked-only-card': !isDiaryEntry(entry) }"
               style="cursor:pointer;" @click="openDailyCard(entry)">
@@ -212,6 +188,7 @@
             </div>
             <EmptyState v-if="filteredEntries.length === 0 && !searchMode" icon="📝" :text="prefs.t('diaryEmptyList')" />
           </div>
+          </section>
         </div>
       </section>
 
@@ -725,6 +702,101 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.diary-workspace-section {
+  padding-top: 24px;
+}
+
+.diary-workspace {
+  width: 100%;
+  max-width: 1720px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.diary-sidebar {
+  position: sticky;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.diary-panel {
+  min-width: 0;
+}
+
+.diary-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.diary-controls {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diary-controls .finance-month-nav {
+  align-self: flex-start;
+}
+
+.diary-controls .diary-search {
+  max-width: none;
+  width: 100%;
+}
+
+.diary-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diary-content {
+  min-width: 0;
+}
+
+.diary-search-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.diary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diary-pie-wrap {
+  align-items: flex-start;
+}
+
+.diary-pie-wrap .pie-chart {
+  width: 128px;
+  height: 128px;
+}
+
+.diary-stat-row {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: var(--border-light);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .diary-linked-only-card {
   border-style: dashed;
 }
@@ -807,5 +879,19 @@ onUnmounted(() => {
 .diary-kanban-board,
 .diary-linked-detail {
   color: var(--color-muted);
+}
+
+@media (max-width: 980px) {
+  .diary-workspace {
+    grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+
+  .diary-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
 }
 </style>
