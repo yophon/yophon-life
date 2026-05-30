@@ -23,8 +23,11 @@ export function createKanbanRoutes(db: Database) {
     .post("/api/boards", ({ body }) => createBoard(db, (body as any).name), {
       body: t.Object({ name: t.String() }),
     })
-    .patch("/api/boards/:id", ({ params, body }) => updateBoard(db, parseId(params.id), (body as any).name), {
-      body: t.Object({ name: t.String() }),
+    .patch("/api/boards/:id", ({ params, body }) => updateBoard(db, parseId(params.id), body as any), {
+      body: t.Object({
+        name: t.Optional(t.String()),
+        sort_order: t.Optional(t.Number()),
+      }),
     })
     .delete("/api/boards/:id", ({ params }) => {
       deleteBoard(db, parseId(params.id));

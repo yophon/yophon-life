@@ -13,14 +13,21 @@
               <div class="board-actions">
                 <button class="btn btn-sm" @click="showBoardModal = true">+ {{ prefs.t('todoAddBoard') }}</button>
                 <button class="btn btn-sm" @click="showColModal = true">+ {{ prefs.t('todoAddColumn') }}</button>
-                <button class="btn btn-sm btn-filled" @click="openNewTodo">+ {{ prefs.t('todoAddTask') }}</button>
+                <button class="btn btn-sm btn-filled" @click="() => openNewTodo()">+ {{ prefs.t('todoAddTask') }}</button>
               </div>
             </div>
             <div class="board-tabs" style="margin-top: 20px;">
               <div
                 v-for="board in boards" :key="board.id"
                 class="board-tab"
-                :class="{ active: currentBoardId === board.id }"
+                :class="{
+                  active: currentBoardId === board.id,
+                  dragging: boardDragState.active && boardDragState.id === board.id,
+                  'drop-before': boardDragState.active && boardDragState.targetId === board.id && boardDragState.insertBefore,
+                  'drop-after': boardDragState.active && boardDragState.targetId === board.id && !boardDragState.insertBefore,
+                }"
+                :data-board-id="board.id"
+                @pointerdown="onBoardPointerDown(board, $event)"
                 @click="switchBoard(board.id)"
                 @dblclick="startEditBoard(board)">
                 <span v-if="editingBoardId !== board.id">{{ board.name }}</span>
@@ -125,6 +132,14 @@
                     <div
                       v-if="dragState.active && dragState.targetColId === col.id && dragState.insertIndex >= itemsByCol(col.id).length"
                       class="kanban-drop-placeholder"></div>
+                    <button
+                      class="kanban-add-card"
+                      type="button"
+                      :title="prefs.t('todoAddTask')"
+                      @pointerdown.stop
+                      @click.stop="openNewTodo(col.id)">
+                      +
+                    </button>
                   </div>
                   <button
                     class="kanban-resize-handle kanban-resize-handle-x"
@@ -161,6 +176,10 @@
       <!-- Task Modal (create & edit) -->
       <AppModal :visible="showTaskModal" @close="closeTaskModal">
         <h2 class="heading-md mb-20">{{ editingTodoId ? prefs.t('todoEditTask') : prefs.t('todoAddTask') }}</h2>
+        <div v-if="editingTodoId" class="task-id-row mb-16">
+          <span>{{ prefs.t('todoTaskId') }}</span>
+          <code>#{{ editingTodoId }}</code>
+        </div>
         <div class="form-group mb-16">
           <label class="form-label">{{ prefs.t('todoTaskName') }}</label>
           <input class="input" v-model="taskForm.title" :placeholder="prefs.t('todoTaskPlaceholder')">
@@ -346,6 +365,15 @@ const columnResizeState = reactive({
   startHeight: 0,
 })
 
+const boardDragState = reactive({
+  active: false,
+  id: null as number | null,
+  targetId: null as number | null,
+  insertBefore: false,
+})
+let boardPointerStart = { x: 0, y: 0, id: 0 }
+let boardHasMoved = false
+
 const ghostStyle = computed(() => ({
   position: 'fixed' as const,
   left: `${dragState.x - dragState.offsetX}px`,
@@ -455,6 +483,7 @@ async function loadBoardData() {
 }
 
 function switchBoard(id: number) {
+  if (boardHasMoved) return
   if (id === currentBoardId.value) return
   currentBoardId.value = id
   loadBoardData()
@@ -566,9 +595,12 @@ async function doDeleteCol() {
 }
 
 // ── Todo CRUD ──
-function openNewTodo() {
+function openNewTodo(columnId?: number) {
   editingTodoId.value = null
   resetTaskForm()
+  if (columnId && columns.value.some(col => col.id === columnId)) {
+    taskForm.value.column_id = columnId
+  }
   showTaskModal.value = true
 }
 
@@ -761,7 +793,127 @@ async function onPointerUp() {
 }
 
 function onTouchPrevent(e: TouchEvent) {
-  if (dragState.active || columnDragState.active || columnResizeState.active) e.preventDefault()
+  if (dragState.active || columnDragState.active || columnResizeState.active || boardDragState.active) e.preventDefault()
+}
+
+function onBoardPointerDown(board: Board, e: PointerEvent) {
+  if (editingBoardId.value === board.id) return
+  if (e.button !== 0) return
+  const target = e.target as HTMLElement
+  if (target.closest('button, input, .board-tab-delete')) return
+
+  boardPointerStart = { x: e.clientX, y: e.clientY, id: board.id }
+  boardHasMoved = false
+
+  document.addEventListener('pointermove', onBoardPointerMove)
+  document.addEventListener('pointerup', onBoardPointerUp)
+}
+
+function onBoardPointerMove(e: PointerEvent) {
+  const dx = e.clientX - boardPointerStart.x
+  const dy = e.clientY - boardPointerStart.y
+  if (!boardHasMoved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
+
+  if (!boardHasMoved) {
+    boardHasMoved = true
+    boardDragState.active = true
+    boardDragState.id = boardPointerStart.id
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'grabbing'
+  }
+
+  const hit = getBoardDropTarget(e.clientX, e.clientY)
+  boardDragState.targetId = hit.id
+  boardDragState.insertBefore = hit.insertBefore
+}
+
+function getBoardDropTarget(x: number, y: number): { id: number | null; insertBefore: boolean } {
+  const tabs = Array.from(document.querySelectorAll<HTMLElement>('.board-tab[data-board-id]'))
+  for (const tab of tabs) {
+    const rect = tab.getBoundingClientRect()
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+    return {
+      id: Number(tab.dataset.boardId),
+      insertBefore: x < rect.left + rect.width / 2,
+    }
+  }
+
+  if (!tabs.length) return { id: null, insertBefore: false }
+  const nearest = tabs
+    .map(el => ({ el, rect: el.getBoundingClientRect() }))
+    .reduce((best, next) => {
+      const bestDistance = Math.abs(x - (best.rect.left + best.rect.width / 2)) + Math.abs(y - (best.rect.top + best.rect.height / 2))
+      const nextDistance = Math.abs(x - (next.rect.left + next.rect.width / 2)) + Math.abs(y - (next.rect.top + next.rect.height / 2))
+      return nextDistance < bestDistance ? next : best
+    })
+
+  return {
+    id: Number(nearest.el.dataset.boardId),
+    insertBefore: x < nearest.rect.left + nearest.rect.width / 2,
+  }
+}
+
+async function onBoardPointerUp() {
+  document.removeEventListener('pointermove', onBoardPointerMove)
+  document.removeEventListener('pointerup', onBoardPointerUp)
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+
+  if (!boardHasMoved || !boardDragState.active) {
+    boardDragState.active = false
+    boardDragState.id = null
+    boardDragState.targetId = null
+    return
+  }
+
+  const id = boardDragState.id!
+  const targetId = boardDragState.targetId
+  const insertBefore = boardDragState.insertBefore
+  boardDragState.active = false
+  boardDragState.id = null
+  boardDragState.targetId = null
+  window.setTimeout(() => { boardHasMoved = false }, 0)
+
+  if (!targetId || targetId === id) return
+
+  const moving = boards.value.find(b => b.id === id)
+  if (!moving) return
+
+  const ordered = boards.value.filter(b => b.id !== id).sort((a, b) => a.sort_order - b.sort_order)
+  const targetIndex = ordered.findIndex(b => b.id === targetId)
+  if (targetIndex < 0) return
+  const insertIndex = insertBefore ? targetIndex : targetIndex + 1
+  ordered.splice(insertIndex, 0, moving)
+
+  const prev = insertIndex > 0 ? ordered[insertIndex - 1] : null
+  const next = insertIndex < ordered.length - 1 ? ordered[insertIndex + 1] : null
+
+  let newSortOrder: number
+  if (!prev && !next) {
+    newSortOrder = 0
+  } else if (!prev) {
+    newSortOrder = next!.sort_order - 1000
+  } else if (!next) {
+    newSortOrder = prev.sort_order + 1000
+  } else {
+    newSortOrder = Math.floor((prev.sort_order + next.sort_order) / 2)
+  }
+
+  const oldSortOrder = moving.sort_order
+  moving.sort_order = newSortOrder
+  boards.value = [...boards.value].sort((a, b) => a.sort_order - b.sort_order)
+
+  try {
+    const updated = await api<Board>(`/api/boards/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sort_order: newSortOrder }),
+    })
+    Object.assign(moving, updated)
+  } catch (e) {
+    console.error('Failed to reorder board:', e)
+    moving.sort_order = oldSortOrder
+    boards.value = [...boards.value].sort((a, b) => a.sort_order - b.sort_order)
+  }
 }
 
 function onColumnPointerDown(col: Column, e: PointerEvent) {
@@ -1050,6 +1202,8 @@ onUnmounted(() => {
   document.removeEventListener('pointerup', onColumnPointerUp)
   document.removeEventListener('pointermove', onColumnResizePointerMove)
   document.removeEventListener('pointerup', onColumnResizePointerUp)
+  document.removeEventListener('pointermove', onBoardPointerMove)
+  document.removeEventListener('pointerup', onBoardPointerUp)
 })
 </script>
 
@@ -1083,6 +1237,25 @@ onUnmounted(() => {
   background: var(--color-ink);
   color: #fff;
 }
+
+.board-tab.dragging {
+  opacity: .45;
+  box-shadow: var(--shadow-sm);
+}
+
+.board-tab.drop-before::before,
+.board-tab.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+.board-tab.drop-before::before { left: -6px; }
+.board-tab.drop-after::after { right: -6px; }
 
 .board-tab-input {
   border: none;
@@ -1346,6 +1519,48 @@ onUnmounted(() => {
 }
 .kanban-card:hover .kanban-card-delete { opacity: .4; }
 .kanban-card-delete:hover { opacity: .8 !important; }
+
+.kanban-add-card {
+  width: 100%;
+  min-height: 36px;
+  border: 1px dashed var(--color-border, rgba(32, 33, 36, .18));
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  background: transparent;
+  font-size: 1.15rem;
+  line-height: 1;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .15s ease, background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.kanban-cards:hover .kanban-add-card,
+.kanban-add-card:focus-visible {
+  opacity: 1;
+}
+
+.kanban-add-card:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+  color: var(--color-ink);
+}
+
+.task-id-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: var(--border);
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-size: .78rem;
+}
+
+.task-id-row code {
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: .78rem;
+}
 
 /* ── Priority dots ── */
 .kanban-priority {

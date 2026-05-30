@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 
 const COLUMN_ALLOWED_FIELDS = ["name", "sort_order", "row_index", "collapsed", "width", "height"] as const;
+const BOARD_ALLOWED_FIELDS = ["name", "sort_order"] as const;
 
 export type KanbanActivityAction = "create" | "update" | "delete" | "move";
 export type KanbanActivityEntity = "board" | "column" | "todo";
@@ -86,21 +87,30 @@ export function createBoard(db: Database, name: string): any {
   return { id: boardId, name, sort_order, columns };
 }
 
-export function updateBoard(db: Database, id: number, name: string): any {
+export function updateBoard(db: Database, id: number, updates: { name?: string; sort_order?: number }): any {
+  const keys = Object.keys(updates).filter((k) => BOARD_ALLOWED_FIELDS.includes(k as any));
+  if (keys.length === 0) return null;
   const current = db.query("SELECT * FROM kanban_boards WHERE id = ?").get(id) as any;
-  db.run("UPDATE kanban_boards SET name = ? WHERE id = ?", [name, id]);
-  if (current && current.name !== name) {
+  const sets = keys.map((k) => `${k} = ?`).join(", ");
+  const values = keys.map((k) => (updates as any)[k]);
+  values.push(id);
+  db.run(`UPDATE kanban_boards SET ${sets} WHERE id = ?`, values);
+  const updated = db.query("SELECT * FROM kanban_boards WHERE id = ?").get(id) as any;
+  if (current && updated) {
+    const renamed = updates.name !== undefined && current.name !== updated.name;
+    const reordered = updates.sort_order !== undefined && current.sort_order !== updated.sort_order;
+    if (!renamed && !reordered) return updated;
     recordKanbanActivity(db, {
-      action: "update",
+      action: reordered && !renamed ? "move" : "update",
       entity_type: "board",
       entity_id: id,
-      entity_title: name,
+      entity_title: updated.name,
       board_id: id,
-      board_name: name,
-      details: `从「${current.name}」改为「${name}」`,
+      board_name: updated.name,
+      details: renamed ? `从「${current.name}」改为「${updated.name}」` : "",
     });
   }
-  return db.query("SELECT * FROM kanban_boards WHERE id = ?").get(id);
+  return updated;
 }
 
 export function deleteBoard(db: Database, id: number): void {
