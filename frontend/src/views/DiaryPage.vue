@@ -706,6 +706,9 @@ onUnmounted(() => {
 <style scoped>
 .diary-workspace-section {
   padding-top: 24px;
+  padding-bottom: 24px;
+  height: calc(100vh - 72px);
+  overflow: hidden;
 }
 
 .diary-workspace {
@@ -713,21 +716,21 @@ onUnmounted(() => {
   max-width: 1720px;
   margin: 0 auto;
   padding: 0 24px;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
+  min-height: 0;
 }
 
 .diary-sidebar {
-  position: sticky;
-  top: 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100vh - 36px);
+  min-height: 0;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 4px;
 }
 
 .diary-panel {
@@ -815,6 +818,9 @@ onUnmounted(() => {
 
 .diary-content {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .diary-search-hint {
@@ -986,14 +992,23 @@ onUnmounted(() => {
 }
 
 @media (max-width: 980px) {
+  .diary-workspace-section {
+    height: auto;
+    overflow: visible;
+  }
+
   .diary-workspace {
     grid-template-columns: 1fr;
     padding: 0 16px;
+    height: auto;
   }
 
   .diary-sidebar {
-    position: static;
-    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .diary-content {
     overflow: visible;
     padding-right: 0;
   }
@@ -1007,10 +1022,6 @@ onUnmounted(() => {
   .diary-stat-hero .pie-chart {
     grid-column: 1 / -1;
     justify-self: center;
-  }
-
-  .diary-content-search {
-    width: 100%;
   }
 }
 </style>
