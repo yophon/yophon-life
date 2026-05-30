@@ -14,10 +14,13 @@
               </div>
             </div>
 
-            <div v-if="!searchMode" class="card card-pad-sm diary-panel">
+            <div class="card card-pad-sm diary-panel">
               <div class="diary-filter-panel">
-                <span class="text-sm" style="font-weight:500;">{{ prefs.t('diaryFilter') }}</span>
-                <div class="diary-filter-group">
+                <div class="diary-search">
+                  <span class="search-icon">🔍</span>
+                  <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
+                </div>
+                <div v-if="!searchMode" class="diary-filter-group">
                   <div class="mood-filter">
                     <button v-for="m in MOODS" :key="m.emoji"
                       :class="{ active: filterMood === m.emoji }"
@@ -26,7 +29,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="diary-filter-group" v-if="monthTags.length > 0">
+                <div class="diary-filter-group" v-if="!searchMode && monthTags.length > 0">
                   <div class="tag-row">
                     <span v-for="t in monthTags" :key="t" class="tag"
                       :class="{ active: filterTag === t }"
@@ -35,13 +38,12 @@
                     </span>
                   </div>
                 </div>
-                <button v-if="filterMood || filterTag" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
+                <button v-if="!searchMode && (filterMood || filterTag)" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
               </div>
             </div>
 
             <div v-if="!searchMode" class="card card-pad-lg diary-panel">
               <div class="diary-calendar-head">
-                <h3 class="heading-md">{{ prefs.t('diaryCalendar') }}</h3>
                 <div class="finance-month-nav diary-month-nav">
                   <button @click="prevMonth">←</button>
                   <div class="month-picker" ref="monthPickerRef">
@@ -92,7 +94,6 @@
             </div>
 
             <div v-if="!searchMode" class="card card-pad-lg diary-panel">
-              <h3 class="heading-md mb-16">{{ prefs.t('diaryMoodTrend') }}</h3>
               <div v-if="moodStats.length > 0" class="diary-stats-panel">
                 <div class="diary-stat-hero">
                   <div class="pie-chart" :style="{ background: moodPieGradient }"></div>
@@ -128,10 +129,6 @@
           </aside>
 
           <section class="diary-content fade-up">
-            <div class="diary-search diary-content-search">
-              <span class="search-icon">🔍</span>
-              <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
-            </div>
             <div v-if="searchMode" class="diary-search-hint">
               <span class="text-sm">{{ prefs.tr('commonSearchResult', { query: searchQuery, count: filteredEntries.length }) }}</span>
               <button class="btn btn-sm" @click="clearSearch">{{ prefs.t('commonClear') }}</button>
@@ -746,15 +743,15 @@ onUnmounted(() => {
 }
 
 .diary-add-btn {
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: var(--color-ink);
+  background: var(--color-accent);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4rem;
+  font-size: 1.9rem;
   line-height: 1;
   box-shadow: var(--shadow-sm);
   transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
@@ -763,20 +760,27 @@ onUnmounted(() => {
 .diary-add-btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
-  background: var(--color-accent);
+  background: var(--color-ink);
 }
 
 .diary-filter-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+}
+
+.diary-filter-panel > * + * {
+  border-top: var(--border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.diary-filter-panel .diary-search {
+  width: 100%;
+  max-width: none;
 }
 
 .diary-filter-group {
-  padding: 10px;
-  border: var(--border-light);
-  border-radius: var(--radius-sm);
-  background: var(--color-tag-bg);
+  background: var(--color-card);
 }
 
 .diary-filter-group .mood-filter,
@@ -809,12 +813,6 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.diary-content-search {
-  width: min(420px, 100%);
-  max-width: none;
-  margin: 0 0 14px auto;
-}
-
 .diary-search-hint {
   display: flex;
   align-items: center;
@@ -833,7 +831,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   text-align: center;
 }
 
