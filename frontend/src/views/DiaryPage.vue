@@ -724,10 +724,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100vh - 104px);
-  overflow-y: auto;
   padding-right: 4px;
-  padding-bottom: 24px;
 }
 
 .diary-panel {
@@ -815,10 +812,7 @@ onUnmounted(() => {
 
 .diary-content {
   min-width: 0;
-  max-height: calc(100vh - 104px);
-  overflow-y: auto;
   padding-right: 4px;
-  padding-bottom: 24px;
 }
 
 .diary-search-hint {
@@ -1000,12 +994,10 @@ onUnmounted(() => {
   }
 
   .diary-sidebar {
-    overflow: visible;
     padding-right: 0;
   }
 
   .diary-content {
-    overflow: visible;
     padding-right: 0;
   }
 }
