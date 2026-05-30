@@ -29,6 +29,10 @@ const app = new Elysia()
       set.status = 400;
       return { error: "财务记录参数不合法" };
     }
+    if ((error as Error).message.startsWith("INVALID_TODO_") || (error as Error).message.startsWith("INVALID_COLUMN_") || (error as Error).message.startsWith("INVALID_BOARD_") || (error as Error).message === "INVALID_SORT_ORDER") {
+      set.status = 400;
+      return { error: "看板参数不合法" };
+    }
     if (code === "VALIDATION") {
       set.status = 400;
       return { error: "请求参数不合法" };

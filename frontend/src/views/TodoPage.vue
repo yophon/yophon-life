@@ -45,6 +45,7 @@
                   @click.stop="showDeleteBoardModal = board.id">✕</span>
               </div>
             </div>
+            <p v-if="boardError" class="board-error" role="alert">{{ boardError }}</p>
           </div>
         </div>
       </section>
@@ -126,7 +127,7 @@
                         <div class="kanban-card-meta">
                           <span class="kanban-priority" :class="item.priority"></span>
                           <span class="text-xs">{{ priorityLabel(item.priority) }}</span>
-                          <span class="kanban-card-delete" @pointerdown.stop @click.stop="deleteTodo(item.id)">✕</span>
+                          <span class="kanban-card-delete" @pointerdown.stop @click.stop="askDeleteTodo(item)">✕</span>
                         </div>
                       </div>
                     </template>
@@ -205,7 +206,7 @@
         </div>
         <div class="flex gap-12" style="justify-content: flex-end;">
           <button class="btn" @click="closeTaskModal">{{ prefs.t('commonCancel') }}</button>
-          <button class="btn btn-filled" @click="editingTodoId ? saveEditTodo() : addTodo()">
+          <button class="btn btn-filled" :disabled="pendingAction === 'saveTodo'" @click="editingTodoId ? saveEditTodo() : addTodo()">
             {{ editingTodoId ? prefs.t('commonSave') : prefs.t('commonAdd') }}
           </button>
         </div>
@@ -220,7 +221,7 @@
         </div>
         <div class="flex gap-12" style="justify-content: flex-end;">
           <button class="btn" @click="showBoardModal = false">{{ prefs.t('commonCancel') }}</button>
-          <button class="btn btn-filled" @click="addBoard">{{ prefs.t('commonCreate') }}</button>
+          <button class="btn btn-filled" :disabled="pendingAction === 'addBoard'" @click="addBoard">{{ prefs.t('commonCreate') }}</button>
         </div>
       </AppModal>
 
@@ -233,7 +234,7 @@
         </div>
         <div class="flex gap-12" style="justify-content: flex-end;">
           <button class="btn" @click="showColModal = false">{{ prefs.t('commonCancel') }}</button>
-          <button class="btn btn-filled" @click="addColumn">{{ prefs.t('commonCreate') }}</button>
+          <button class="btn btn-filled" :disabled="pendingAction === 'addColumn'" @click="addColumn">{{ prefs.t('commonCreate') }}</button>
         </div>
       </AppModal>
 
@@ -243,7 +244,7 @@
         <p class="text-body mb-20">{{ prefs.t('todoDeleteBoardConfirm') }} {{ prefs.t('commonDeleteIrreversible') }}</p>
         <div class="flex gap-12" style="justify-content: flex-end;">
           <button class="btn" @click="showDeleteBoardModal = null">{{ prefs.t('commonCancel') }}</button>
-          <button class="btn btn-danger-filled" @click="doDeleteBoard">{{ prefs.t('commonDelete') }}</button>
+          <button class="btn btn-danger-filled" :disabled="pendingAction === 'deleteBoard'" @click="doDeleteBoard">{{ prefs.t('commonDelete') }}</button>
         </div>
       </AppModal>
 
@@ -255,7 +256,17 @@
         </p>
         <div class="flex gap-12" style="justify-content: flex-end;">
           <button class="btn" @click="showDeleteColModal = null">{{ prefs.t('commonCancel') }}</button>
-          <button class="btn btn-danger-filled" @click="doDeleteCol">{{ prefs.t('commonDelete') }}</button>
+          <button class="btn btn-danger-filled" :disabled="pendingAction === 'deleteColumn'" @click="doDeleteCol">{{ prefs.t('commonDelete') }}</button>
+        </div>
+      </AppModal>
+
+      <!-- Delete Task Confirm Modal -->
+      <AppModal :visible="todoPendingDelete !== null" @close="todoPendingDelete = null">
+        <h2 class="heading-md mb-12">{{ prefs.t('todoDeleteTask') }}</h2>
+        <p class="text-body mb-20">{{ prefs.tr('todoDeleteTaskConfirm', { title: todoPendingDelete?.title || '' }) }} {{ prefs.t('commonDeleteIrreversible') }}</p>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="todoPendingDelete = null">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-danger-filled" :disabled="pendingAction === 'deleteTodo'" @click="doDeleteTodo">{{ prefs.t('commonDelete') }}</button>
         </div>
       </AppModal>
     </main>
@@ -303,6 +314,9 @@ const showBoardModal = ref(false)
 const showColModal = ref(false)
 const showDeleteBoardModal = ref<number | null>(null)
 const showDeleteColModal = ref<number | null>(null)
+const todoPendingDelete = ref<TodoItem | null>(null)
+const boardError = ref('')
+const pendingAction = ref('')
 
 // Forms
 const taskForm = ref({ title: '', description: '', priority: 'medium', column_id: 0 })
@@ -386,9 +400,41 @@ const ghostStyle = computed(() => ({
 
 // ── Helpers ──
 function itemsByCol(colId: number): TodoItem[] {
-  return todos.value
-    .filter(t => t.column_id === colId)
-    .sort((a, b) => a.sort_order - b.sort_order)
+  return itemsByColumn.value.get(colId) || []
+}
+
+const itemsByColumn = computed(() => {
+  const map = new Map<number, TodoItem[]>()
+  for (const item of todos.value) {
+    if (!map.has(item.column_id)) map.set(item.column_id, [])
+    map.get(item.column_id)!.push(item)
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+  }
+  return map
+})
+
+function showError(message?: string) {
+  boardError.value = message || prefs.t('todoActionFailed')
+}
+
+function clearError() {
+  boardError.value = ''
+}
+
+async function runPending(action: string, fn: () => Promise<void>) {
+  if (pendingAction.value) return
+  pendingAction.value = action
+  clearError()
+  try {
+    await fn()
+  } catch (e) {
+    console.error(`Failed to run ${action}:`, e)
+    showError()
+  } finally {
+    pendingAction.value = ''
+  }
 }
 
 function priorityLabel(p: string) {
@@ -464,6 +510,7 @@ async function loadBoards() {
     }
   } catch (e) {
     console.error('Failed to load boards:', e)
+    showError()
   }
 }
 
@@ -480,6 +527,7 @@ async function loadBoardData() {
     if (!editingTodoId.value && !cols.some(col => col.id === taskForm.value.column_id)) resetTaskForm()
   } catch (e) {
     console.error('Failed to load board data:', e)
+    showError()
   }
 }
 
@@ -499,14 +547,16 @@ async function loadInitialData() {
 // ── Board CRUD ──
 async function addBoard() {
   if (!boardFormName.value.trim()) return
-  const board = await api<Board>('/api/boards', {
-    method: 'POST',
-    body: JSON.stringify({ name: boardFormName.value.trim() }),
+  await runPending('addBoard', async () => {
+    const board = await api<Board>('/api/boards', {
+      method: 'POST',
+      body: JSON.stringify({ name: boardFormName.value.trim() }),
+    })
+    boards.value.push(board)
+    showBoardModal.value = false
+    boardFormName.value = ''
+    switchBoard(board.id)
   })
-  boards.value.push(board)
-  showBoardModal.value = false
-  boardFormName.value = ''
-  switchBoard(board.id)
 }
 
 function startEditBoard(board: Board) {
@@ -521,35 +571,44 @@ async function finishEditBoard() {
   const id = editingBoardId.value
   editingBoardId.value = null
   if (!name) return
-  await api(`/api/boards/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ name }),
-  })
-  const b = boards.value.find(x => x.id === id)
-  if (b) b.name = name
+  try {
+    await api(`/api/boards/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+    const b = boards.value.find(x => x.id === id)
+    if (b) b.name = name
+  } catch (e) {
+    console.error('Failed to edit board:', e)
+    showError()
+  }
 }
 
 async function doDeleteBoard() {
   const id = showDeleteBoardModal.value
   if (!id) return
-  showDeleteBoardModal.value = null
-  await api(`/api/boards/${id}`, { method: 'DELETE' })
-  boards.value = boards.value.filter(b => b.id !== id)
-  if (currentBoardId.value === id && boards.value.length) {
-    switchBoard(boards.value[0].id)
-  }
+  await runPending('deleteBoard', async () => {
+    showDeleteBoardModal.value = null
+    await api(`/api/boards/${id}`, { method: 'DELETE' })
+    boards.value = boards.value.filter(b => b.id !== id)
+    if (currentBoardId.value === id && boards.value.length) {
+      switchBoard(boards.value[0].id)
+    }
+  })
 }
 
 // ── Column CRUD ──
 async function addColumn() {
   if (!colFormName.value.trim()) return
-  const col = await api<Column>(`/api/boards/${currentBoardId.value}/columns`, {
-    method: 'POST',
-    body: JSON.stringify({ name: colFormName.value.trim() }),
+  await runPending('addColumn', async () => {
+    const col = await api<Column>(`/api/boards/${currentBoardId.value}/columns`, {
+      method: 'POST',
+      body: JSON.stringify({ name: colFormName.value.trim() }),
+    })
+    columns.value.push(col)
+    showColModal.value = false
+    colFormName.value = ''
   })
-  columns.value.push(col)
-  showColModal.value = false
-  colFormName.value = ''
 }
 
 function startEditCol(col: Column) {
@@ -564,12 +623,17 @@ async function finishEditCol() {
   const id = editingColId.value
   editingColId.value = null
   if (!name) return
-  await api(`/api/columns/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ name }),
-  })
-  const c = columns.value.find(x => x.id === id)
-  if (c) c.name = name
+  try {
+    await api(`/api/columns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+    const c = columns.value.find(x => x.id === id)
+    if (c) c.name = name
+  } catch (e) {
+    console.error('Failed to edit column:', e)
+    showError()
+  }
 }
 
 async function toggleColumnCollapsed(col: Column) {
@@ -583,16 +647,27 @@ async function toggleColumnCollapsed(col: Column) {
     })
   } catch {
     col.collapsed = oldValue
+    showError()
   }
 }
 
 async function doDeleteCol() {
   const id = showDeleteColModal.value
   if (!id) return
-  showDeleteColModal.value = null
-  await api(`/api/columns/${id}`, { method: 'DELETE' })
-  columns.value = columns.value.filter(c => c.id !== id)
-  todos.value = todos.value.filter(t => t.column_id !== id)
+  const targetColumnId = columns.value
+    .filter(c => c.id !== id)
+    .sort((a, b) => Number(a.row_index || 0) - Number(b.row_index || 0) || a.sort_order - b.sort_order)[0]?.id
+  await runPending('deleteColumn', async () => {
+    showDeleteColModal.value = null
+    await api(`/api/columns/${id}`, { method: 'DELETE' })
+    columns.value = columns.value.filter(c => c.id !== id)
+    if (targetColumnId) {
+      todos.value = todos.value.map(t => t.column_id === id ? { ...t, column_id: targetColumnId } : t)
+      await loadBoardData()
+    } else {
+      todos.value = todos.value.filter(t => t.column_id !== id)
+    }
+  })
 }
 
 // ── Todo CRUD ──
@@ -636,13 +711,15 @@ async function saveEditTodo() {
     priority: taskForm.value.priority,
     column_id: taskForm.value.column_id,
   }
-  const updated = await api<TodoItem>(`/api/todo/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
+  await runPending('saveTodo', async () => {
+    const updated = await api<TodoItem>(`/api/todo/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    })
+    const idx = todos.value.findIndex(t => t.id === id)
+    if (idx >= 0) Object.assign(todos.value[idx], updated)
+    closeTaskModal()
   })
-  const idx = todos.value.findIndex(t => t.id === id)
-  if (idx >= 0) Object.assign(todos.value[idx], updated)
-  closeTaskModal()
 }
 
 async function addTodo() {
@@ -650,20 +727,31 @@ async function addTodo() {
   if (!columns.value.some(col => col.id === taskForm.value.column_id)) {
     taskForm.value.column_id = firstColumnId()
   }
-  const item = await api<TodoItem>('/api/todo', {
-    method: 'POST',
-    body: JSON.stringify({
-      ...taskForm.value,
-      board_id: currentBoardId.value,
-    }),
+  await runPending('saveTodo', async () => {
+    const item = await api<TodoItem>('/api/todo', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...taskForm.value,
+        board_id: currentBoardId.value,
+      }),
+    })
+    todos.value.push(item)
+    closeTaskModal()
   })
-  todos.value.push(item)
-  closeTaskModal()
 }
 
-async function deleteTodo(id: number) {
-  await api(`/api/todo/${id}`, { method: 'DELETE' })
-  todos.value = todos.value.filter(t => t.id !== id)
+function askDeleteTodo(item: TodoItem) {
+  todoPendingDelete.value = item
+}
+
+async function doDeleteTodo() {
+  const item = todoPendingDelete.value
+  if (!item) return
+  await runPending('deleteTodo', async () => {
+    await api(`/api/todo/${item.id}`, { method: 'DELETE' })
+    todos.value = todos.value.filter(t => t.id !== item.id)
+    todoPendingDelete.value = null
+  })
 }
 
 // ── Drag & Drop ──
@@ -1286,6 +1374,12 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.board-error {
+  margin-top: 14px;
+  color: var(--color-danger);
+  font-size: .85rem;
 }
 
 /* ── Kanban viewport ── */

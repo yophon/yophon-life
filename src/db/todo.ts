@@ -11,6 +11,10 @@ export interface TodoInput {
 }
 
 const TODO_ALLOWED_FIELDS = ["title", "description", "priority", "status", "column_id", "sort_order"] as const;
+const PRIORITIES = new Set(["high", "medium", "low"]);
+const STATUSES = new Set(["todo", "done"]);
+const SORT_GAP = 1000;
+const MIN_SORT_GAP = 2;
 
 export function getTodoItems(db: Database): any[] {
   return db.query("SELECT * FROM todo_items ORDER BY sort_order ASC, created_at DESC").all();
@@ -22,13 +26,18 @@ export function getTodosByBoard(db: Database, boardId: number): any[] {
 }
 
 export function createTodoItem(db: Database, item: TodoInput): any {
-  const { title, description = "", priority = "medium", board_id = 1, column_id } = item;
+  const title = normalizeTitle(item.title);
+  const description = item.description?.trim() || "";
+  const priority = normalizePriority(item.priority);
+  const status = normalizeStatus(item.status);
+  const board_id = item.board_id || 1;
+  const { column_id } = item;
   const columnId = resolveColumnId(db, board_id, column_id);
   const maxRow = db.query("SELECT MAX(sort_order) as max_sort FROM todo_items WHERE board_id = ? AND column_id IS ?").get(board_id, columnId) as any;
-  const sort_order = (maxRow?.max_sort ?? -1000) + 1000;
+  const sort_order = (maxRow?.max_sort ?? -SORT_GAP) + SORT_GAP;
   const result = db.run(
     "INSERT INTO todo_items (title, description, priority, status, board_id, column_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [title, description, priority, "todo", board_id, columnId, sort_order],
+    [title, description, priority, status, board_id, columnId, sort_order],
   );
   const id = Number(result.lastInsertRowid);
   recordKanbanActivity(db, {
@@ -44,6 +53,7 @@ export function createTodoItem(db: Database, item: TodoInput): any {
     title,
     description,
     priority,
+    status,
     board_id,
     column_id: columnId,
     sort_order,
@@ -53,6 +63,7 @@ export function createTodoItem(db: Database, item: TodoInput): any {
 export function updateTodoItem(db: Database, id: number, updates: Record<string, any>): any {
   const current = db.query("SELECT * FROM todo_items WHERE id = ?").get(id) as any;
   if (!current) return null;
+  updates = normalizeTodoUpdates(updates);
   if (updates.column_id !== undefined) {
     updates = {
       ...updates,
@@ -65,6 +76,12 @@ export function updateTodoItem(db: Database, id: number, updates: Record<string,
   const values = keys.map((k) => updates[k]);
   values.push(id);
   db.run(`UPDATE todo_items SET ${sets}, updated_at = (unixepoch()) WHERE id = ?`, values);
+  if (updates.sort_order !== undefined || updates.column_id !== undefined) {
+    normalizeTodoSortOrdersIfNeeded(db, current.board_id, updates.column_id ?? current.column_id);
+    if (updates.column_id !== undefined && current.column_id !== updates.column_id) {
+      normalizeTodoSortOrdersIfNeeded(db, current.board_id, current.column_id);
+    }
+  }
   const updated = db.query("SELECT * FROM todo_items WHERE id = ?").get(id) as any;
   if (current && updated) {
     const movedColumn = updates.column_id !== undefined && current.column_id !== updated.column_id;
@@ -86,6 +103,59 @@ export function updateTodoItem(db: Database, id: number, updates: Record<string,
     }
   }
   return updated;
+}
+
+function normalizeTitle(value: unknown): string {
+  const title = String(value ?? "").trim();
+  if (!title) throw new Error("INVALID_TODO_TITLE");
+  return title;
+}
+
+function normalizePriority(value: unknown): string {
+  const priority = String(value ?? "medium").trim();
+  if (!PRIORITIES.has(priority)) throw new Error("INVALID_TODO_PRIORITY");
+  return priority;
+}
+
+function normalizeStatus(value: unknown): string {
+  const status = String(value ?? "todo").trim();
+  if (!STATUSES.has(status)) throw new Error("INVALID_TODO_STATUS");
+  return status;
+}
+
+function normalizeSortOrder(value: unknown): number {
+  const sortOrder = Number(value);
+  if (!Number.isFinite(sortOrder)) throw new Error("INVALID_TODO_SORT_ORDER");
+  return Math.round(sortOrder);
+}
+
+function normalizeTodoUpdates(updates: Record<string, any>): Record<string, any> {
+  const next = { ...updates };
+  if (next.title !== undefined) next.title = normalizeTitle(next.title);
+  if (next.description !== undefined) next.description = String(next.description ?? "").trim();
+  if (next.priority !== undefined) next.priority = normalizePriority(next.priority);
+  if (next.status !== undefined) next.status = normalizeStatus(next.status);
+  if (next.sort_order !== undefined) next.sort_order = normalizeSortOrder(next.sort_order);
+  return next;
+}
+
+function normalizeTodoSortOrdersIfNeeded(db: Database, boardId: number, columnId: number | null): void {
+  const rows = db
+    .query("SELECT id, sort_order FROM todo_items WHERE board_id = ? AND column_id IS ? ORDER BY sort_order ASC, id ASC")
+    .all(boardId, columnId) as any[];
+  let shouldNormalize = false;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].sort_order - rows[i - 1].sort_order < MIN_SORT_GAP) {
+      shouldNormalize = true;
+      break;
+    }
+  }
+  if (!shouldNormalize) return;
+
+  const update = db.prepare("UPDATE todo_items SET sort_order = ?, updated_at = (unixepoch()) WHERE id = ?");
+  db.transaction(() => {
+    rows.forEach((row, index) => update.run(index * SORT_GAP, row.id));
+  })();
 }
 
 export function deleteTodoItem(db: Database, id: number): void {
