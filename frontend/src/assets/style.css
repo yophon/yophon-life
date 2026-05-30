@@ -115,6 +115,10 @@ body,
   height: 100dvh;
 }
 
+body.todo-board-page {
+  overflow: hidden;
+}
+
 #app {
   display: flex;
   flex-direction: column;

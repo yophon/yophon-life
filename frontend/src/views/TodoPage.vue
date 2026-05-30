@@ -44,7 +44,7 @@
 
       <!-- Kanban -->
       <section class="section kanban-section">
-        <div class="kanban-viewport">
+        <div class="kanban-viewport" ref="kanbanViewportRef" @wheel.prevent="onKanbanWheel">
           <div class="kanban" ref="kanbanRef"
             :class="{ 'column-dragging': columnDragState.active }">
             <template v-for="row in columnRows" :key="row.rowIndex">
@@ -288,6 +288,7 @@ const columns = ref<Column[]>([])
 const todos = ref<TodoItem[]>([])
 const currentBoardId = ref<number>(0)
 const kanbanRef = ref<HTMLElement | null>(null)
+const kanbanViewportRef = ref<HTMLElement | null>(null)
 
 // Modals
 const showTaskModal = ref(false)
@@ -853,6 +854,12 @@ function onTouchPrevent(e: TouchEvent) {
   if (dragState.active || columnDragState.active || columnResizeState.active || boardDragState.active) e.preventDefault()
 }
 
+function onKanbanWheel(e: WheelEvent) {
+  const viewport = kanbanViewportRef.value
+  if (!viewport) return
+  viewport.scrollLeft += e.deltaY || e.deltaX
+}
+
 function onBoardPointerDown(board: Board, e: PointerEvent) {
   if (editingBoardId.value === board.id) return
   if (e.button !== 0) return
@@ -1183,6 +1190,7 @@ watch(() => authStore.authed, (authed) => {
 }, { immediate: true })
 
 onMounted(() => {
+  document.body.classList.add('todo-board-page')
   if (!authStore.checked) {
     authStore.check()
   }
@@ -1190,6 +1198,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  document.body.classList.remove('todo-board-page')
   document.removeEventListener('touchmove', onTouchPrevent)
   document.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerup', onPointerUp)
@@ -1204,7 +1213,8 @@ onUnmounted(() => {
 
 <style scoped>
 .todo-page {
-  min-height: 100dvh;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1325,6 +1335,7 @@ onUnmounted(() => {
 .kanban-section {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   padding-top: 12px;
   padding-bottom: 16px;
 }
