@@ -136,7 +136,11 @@
 
             <div class="diary-list">
             <div v-for="entry in filteredEntries" :key="entry.id ?? `linked-${entry.date}`" class="card card-pad fade-up"
-              :class="{ 'diary-linked-only-card': !isDiaryEntry(entry) }"
+              :ref="(el) => setEntryCardRef(entry.date, el)"
+              :class="{
+                'diary-linked-only-card': !isDiaryEntry(entry),
+                'diary-selected-card': entry.date === selectedDate,
+              }"
               style="cursor:pointer;" @click="openDailyCard(entry)">
               <div class="flex justify-between items-center mb-8">
                 <div class="flex items-center gap-8">
@@ -232,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../composables/useApi'
 import { useAuthStore } from '../stores/auth'
 import PasswordGate from '../components/PasswordGate.vue'
@@ -303,6 +307,8 @@ const filterTag = ref('')
 const showMonthPicker = ref(false)
 const pickerYear = ref(viewYear.value)
 const monthPickerRef = ref<HTMLElement | null>(null)
+const entryCardRefs = new Map<string, HTMLElement>()
+const pendingScrollDate = ref('')
 
 // ── Data ───
 const entries = ref<DiaryEntry[]>([])
@@ -470,6 +476,19 @@ function isDiaryEntry(entry: DiaryEntry) {
   return entry.has_diary !== false
 }
 
+function setEntryCardRef(date: string, el: Element | null) {
+  if (el instanceof HTMLElement) entryCardRefs.set(date, el)
+  else entryCardRefs.delete(date)
+}
+
+async function scrollToEntryDate(date: string) {
+  await nextTick()
+  const target = entryCardRefs.get(date)
+  if (!target) return false
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  return true
+}
+
 function formatMonthLabel(year: number, month: number) {
   return prefs.tr('commonMonthFormat', { year, month })
 }
@@ -541,6 +560,11 @@ async function loadData() {
     entries.value = entryData
     moodStats.value = statsData
     calendarData.value = calData.flat()
+    if (pendingScrollDate.value) {
+      const targetDate = pendingScrollDate.value
+      pendingScrollDate.value = ''
+      scrollToEntryDate(targetDate)
+    }
   } catch (e) {
     console.error('Failed to load diary data:', e)
   }
@@ -585,36 +609,16 @@ function clearSearch() {
 }
 
 // ── Calendar click ───
-function onCalendarClick(cell: { date: string; entryId: number | null; isCurrentMonth: boolean }) {
+async function onCalendarClick(cell: { date: string; entryId: number | null; isCurrentMonth: boolean }) {
   selectedDate.value = cell.date
   if (!cell.isCurrentMonth) {
     const { year, month } = parseDateParts(cell.date)
+    pendingScrollDate.value = cell.date
     setViewMonth(year, month)
-  }
-
-  if (cell.entryId) {
-    openEntryById(cell.entryId, cell.date)
-  } else {
-    openModal(undefined, cell.date)
-  }
-}
-
-async function openEntryById(entryId: number, date: string) {
-  const localEntry = entries.value.find(e => e.id === entryId)
-  if (localEntry) {
-    openModal(localEntry)
     return
   }
 
-  try {
-    const { year, month } = parseDateParts(date)
-    const monthEntries = await api<DiaryEntry[]>(`/api/diary?year=${year}&month=${month}`)
-    const entry = monthEntries.find(e => e.id === entryId)
-    if (entry) openModal(entry)
-    else openModal(undefined, date)
-  } catch {
-    openModal(undefined, date)
-  }
+  scrollToEntryDate(cell.date)
 }
 
 // ── Modal ───
@@ -916,6 +920,11 @@ onUnmounted(() => {
 
 .diary-linked-only-card {
   border-style: dashed;
+}
+
+.diary-selected-card {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 .diary-linked-only-note {
