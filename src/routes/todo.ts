@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import type { Database } from "bun:sqlite";
+import { createTodoComment, deleteTodoComment, getTodoComments } from "../db/todoComments";
 import { createTodoItem, deleteTodoItem, getTodoItems, updateTodoItem } from "../db/todo";
 import { parseId } from "../http";
 
@@ -25,6 +26,16 @@ export function createTodoRoutes(db: Database) {
         column_id: t.Optional(t.Number()),
         sort_order: t.Optional(t.Number()),
       }),
+    })
+    .get("/:id/comments", ({ params }) => getTodoComments(db, parseId(params.id)))
+    .post("/:id/comments", ({ params, body }) => createTodoComment(db, parseId(params.id), body as any), {
+      body: t.Object({
+        content: t.String(),
+      }),
+    })
+    .delete("/:id/comments/:commentId", ({ params }) => {
+      deleteTodoComment(db, parseId(params.id), parseId(params.commentId));
+      return { ok: true };
     })
     .delete("/:id", ({ params }) => {
       deleteTodoItem(db, parseId(params.id));

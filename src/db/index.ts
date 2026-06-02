@@ -73,6 +73,14 @@ function createTables(db: Database) {
     updated_at INTEGER DEFAULT (unixepoch())
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS todo_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id INTEGER NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    updated_at INTEGER DEFAULT (unixepoch())
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS kanban_activity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     action TEXT NOT NULL,
@@ -136,6 +144,14 @@ function runMigrations(db: Database) {
   tryAlter("ALTER TABLE kanban_columns ADD COLUMN row_index INTEGER DEFAULT 0");
   tryAlter("ALTER TABLE kanban_columns ADD COLUMN width INTEGER");
   tryAlter("ALTER TABLE kanban_columns ADD COLUMN height INTEGER");
+
+  db.run(`CREATE TABLE IF NOT EXISTS todo_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id INTEGER NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    updated_at INTEGER DEFAULT (unixepoch())
+  )`);
 }
 
 function seedPassword(db: Database) {
@@ -189,5 +205,6 @@ function seedDefaults(db: Database) {
 export * from "./auth";
 export * from "./diary";
 export * from "./todo";
+export * from "./todoComments";
 export * from "./kanban";
 export * from "./finance";

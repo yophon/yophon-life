@@ -175,6 +175,38 @@
             <option v-for="col in columns" :key="col.id" :value="col.id">{{ col.name }}</option>
           </select>
         </div>
+        <div v-if="editingTodoId" class="task-comments mb-20">
+          <div class="task-comments-header">
+            <h3>{{ prefs.t('todoComments') }}</h3>
+            <span class="text-xs">{{ comments.length }}</span>
+          </div>
+          <div class="task-comment-list">
+            <p v-if="commentsLoading" class="task-comment-empty">{{ prefs.t('commonLoading') }}</p>
+            <p v-else-if="!comments.length" class="task-comment-empty">{{ prefs.t('todoNoComments') }}</p>
+            <article v-for="comment in comments" v-else :key="comment.id" class="task-comment">
+              <p>{{ comment.content }}</p>
+              <div class="task-comment-meta">
+                <time :datetime="commentDateTime(comment.created_at)">{{ formatCommentTime(comment.created_at) }}</time>
+                <button class="task-comment-delete" type="button" :disabled="pendingAction === `deleteComment:${comment.id}`" @click="deleteComment(comment)">
+                  {{ prefs.t('commonDelete') }}
+                </button>
+              </div>
+            </article>
+          </div>
+          <div class="task-comment-form">
+            <textarea
+              class="input"
+              v-model="commentDraft"
+              rows="2"
+              maxlength="2000"
+              :placeholder="prefs.t('todoCommentPlaceholder')"
+              @keydown.meta.enter.prevent="addComment"
+              @keydown.ctrl.enter.prevent="addComment"></textarea>
+            <button class="btn btn-sm btn-filled" type="button" :disabled="pendingAction === 'addComment' || !commentDraft.trim()" @click="addComment">
+              {{ prefs.t('todoAddComment') }}
+            </button>
+          </div>
+        </div>
         <div class="flex gap-12" style="justify-content: flex-end;">
           <button class="btn" @click="closeTaskModal">{{ prefs.t('commonCancel') }}</button>
           <button class="btn btn-filled" :disabled="pendingAction === 'saveTodo'" @click="editingTodoId ? saveEditTodo() : addTodo()">
@@ -257,6 +289,13 @@ interface TodoItem {
   priority: string; status: string
   board_id: number; column_id: number; sort_order: number
 }
+interface TodoComment {
+  id: number
+  todo_id: number
+  content: string
+  created_at: number
+  updated_at: number
+}
 interface Board { id: number; name: string; sort_order: number }
 interface Column {
   id: number
@@ -294,6 +333,9 @@ const taskForm = ref({ title: '', description: '', priority: 'medium', column_id
 const boardFormName = ref('')
 const colFormName = ref('')
 const editingTodoId = ref<number | null>(null)
+const comments = ref<TodoComment[]>([])
+const commentDraft = ref('')
+const commentsLoading = ref(false)
 
 // Board editing
 const editingBoardId = ref<number | null>(null)
@@ -627,6 +669,9 @@ function openNewTodo(columnId?: number) {
 function closeTaskModal() {
   showTaskModal.value = false
   editingTodoId.value = null
+  comments.value = []
+  commentDraft.value = ''
+  commentsLoading.value = false
   resetTaskForm()
 }
 
@@ -637,6 +682,8 @@ function onCardClick(item: TodoItem) {
 
 function openEditTodo(item: TodoItem) {
   editingTodoId.value = item.id
+  comments.value = []
+  commentDraft.value = ''
   taskForm.value = {
     title: item.title,
     description: item.description || '',
@@ -644,6 +691,7 @@ function openEditTodo(item: TodoItem) {
     column_id: item.column_id,
   }
   showTaskModal.value = true
+  loadComments(item.id)
 }
 
 async function saveEditTodo() {
@@ -682,6 +730,49 @@ async function addTodo() {
     todos.value.push(item)
     closeTaskModal()
   })
+}
+
+async function loadComments(todoId: number) {
+  commentsLoading.value = true
+  try {
+    comments.value = await api<TodoComment[]>(`/api/todo/${todoId}/comments`)
+  } catch (e) {
+    console.error('Failed to load comments:', e)
+    showError()
+  } finally {
+    commentsLoading.value = false
+  }
+}
+
+async function addComment() {
+  const todoId = editingTodoId.value
+  const content = commentDraft.value.trim()
+  if (!todoId || !content) return
+  await runPending('addComment', async () => {
+    const comment = await api<TodoComment>(`/api/todo/${todoId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    })
+    comments.value.push(comment)
+    commentDraft.value = ''
+  })
+}
+
+async function deleteComment(comment: TodoComment) {
+  const todoId = editingTodoId.value
+  if (!todoId) return
+  await runPending(`deleteComment:${comment.id}`, async () => {
+    await api(`/api/todo/${todoId}/comments/${comment.id}`, { method: 'DELETE' })
+    comments.value = comments.value.filter(item => item.id !== comment.id)
+  })
+}
+
+function formatCommentTime(timestamp: number) {
+  return new Date(timestamp * 1000).toLocaleString()
+}
+
+function commentDateTime(timestamp: number) {
+  return new Date(timestamp * 1000).toISOString()
 }
 
 function askDeleteTodo(item: TodoItem) {
@@ -1635,6 +1726,84 @@ onUnmounted(() => {
   color: var(--color-ink);
   font-family: var(--font-mono);
   font-size: .78rem;
+}
+
+.task-comments {
+  border-top: var(--border-light);
+  padding-top: 16px;
+}
+
+.task-comments-header,
+.task-comment-meta,
+.task-comment-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-comments-header {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.task-comments-header h3 {
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.task-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.task-comment,
+.task-comment-empty {
+  border: var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--color-bg-soft, rgba(32, 33, 36, .03));
+}
+
+.task-comment p,
+.task-comment-empty {
+  color: var(--color-muted);
+  font-size: .84rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.task-comment-meta {
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-size: .72rem;
+}
+
+.task-comment-delete {
+  border: none;
+  background: transparent;
+  color: var(--color-danger);
+  cursor: pointer;
+  font-size: .74rem;
+  padding: 2px 0;
+}
+
+.task-comment-delete:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.task-comment-form {
+  align-items: flex-end;
+}
+
+.task-comment-form textarea {
+  flex: 1;
+  min-height: 58px;
 }
 
 /* ── Priority dots ── */
