@@ -28,7 +28,10 @@ DB_PATH=data/life.db
 YOPHON_DEFAULT_PASSWORD=your-password
 APP_ORIGIN=http://localhost:5173
 COOKIE_SECURE=false
+SESSION_TTL_SECONDS=15552000
 ```
+
+`SESSION_TTL_SECONDS` controls how long login sessions stay valid. The default is 180 days.
 
 ## 说明
 

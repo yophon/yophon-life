@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
 import { api } from '../composables/useApi'
 import { useAuthStore } from '../stores/auth'
 import PasswordGate from '../components/PasswordGate.vue'
@@ -476,7 +476,7 @@ function isDiaryEntry(entry: DiaryEntry) {
   return entry.has_diary !== false
 }
 
-function setEntryCardRef(date: string, el: Element | null) {
+function setEntryCardRef(date: string, el: Element | ComponentPublicInstance | null) {
   if (el instanceof HTMLElement) entryCardRefs.set(date, el)
   else entryCardRefs.delete(date)
 }
