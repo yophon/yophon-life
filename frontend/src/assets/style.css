@@ -1542,9 +1542,12 @@ select.input {
     display: flex;
     flex-direction: column;
     position: absolute;
-    top: calc(100% + 8px);
-    right: 16px;
-    left: 16px;
+    top: 56px;
+    right: 24px;
+    width: max-content;
+    min-width: 148px;
+    max-width: calc(100vw - 48px);
+    align-items: stretch;
     background: var(--color-card);
     border: var(--border);
     border-radius: var(--radius-md);

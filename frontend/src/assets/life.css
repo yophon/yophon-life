@@ -234,8 +234,8 @@
   }
 
   .life-nav-logout {
-    border-radius: var(--radius-sm);
-    padding: 9px 16px;
+    border-radius: 100px;
+    padding: 7px 16px;
   }
 
   .settings-hero,
