@@ -5,65 +5,60 @@
       <section class="board-toolbar-section">
         <div class="board-toolbar fade-up">
           <div class="board-navigation">
-            <div class="folder-tabs" aria-label="Board folders">
-              <button class="folder-tab" type="button" :class="{ active: currentFolderFilter === 'all' }" @click="switchFolder('all')">
-                {{ prefs.t('todoAllFolders') }}
-              </button>
-              <button class="folder-tab" type="button" :class="{ active: currentFolderFilter === 'unfiled' }" @click="switchFolder('unfiled')">
-                {{ prefs.t('todoUnfiledBoards') }}
-              </button>
-              <div
-                v-for="folder in folders"
-                :key="folder.id"
-                class="folder-tab folder-tab-editable"
-                :class="{ active: currentFolderFilter === folder.id }"
-                @click="switchFolder(folder.id)"
-                @dblclick="startEditFolder(folder)">
-                <span v-if="editingFolderId !== folder.id">{{ folder.name }}</span>
-                <input
-                  v-else
-                  ref="folderEditInputs"
-                  class="folder-tab-input"
-                  v-model="editingFolderName"
-                  @click.stop
-                  @blur="finishEditFolder"
-                  @keydown.enter="finishEditFolder"
-                  @keydown.escape="editingFolderId = null">
-                <span
-                  v-if="editingFolderId !== folder.id"
-                  class="folder-tab-delete"
-                  @click.stop="showDeleteFolderModal = folder.id">✕</span>
+            <div class="board-tabs-row">
+              <div class="folder-filter" aria-label="Board folders">
+                <select class="folder-filter-select" :value="String(currentFolderFilter)" @change="onFolderFilterChange">
+                  <option value="all">{{ prefs.t('todoAllFolders') }}</option>
+                  <option value="unfiled">{{ prefs.t('todoUnfiledBoards') }}</option>
+                  <option v-for="folder in folders" :key="folder.id" :value="String(folder.id)">{{ folder.name }}</option>
+                </select>
+                <button
+                  v-if="selectedFolder"
+                  class="folder-filter-action"
+                  type="button"
+                  :title="prefs.t('todoRenameFolder')"
+                  @click="openRenameFolderModal">
+                  {{ prefs.t('commonEdit') }}
+                </button>
+                <button
+                  v-if="selectedFolder"
+                  class="folder-filter-action danger"
+                  type="button"
+                  :title="prefs.t('todoDeleteFolder')"
+                  @click="openDeleteSelectedFolderModal">
+                  ✕
+                </button>
               </div>
-            </div>
-            <div class="board-tabs" aria-label="Boards">
-              <div
-                v-for="board in visibleBoards" :key="board.id"
-                class="board-tab"
-                :class="{
-                  active: currentBoardId === board.id,
-                  dragging: boardDragState.active && boardDragState.id === board.id,
-                  'drop-before': boardDragState.active && boardDragState.targetId === board.id && boardDragState.insertBefore,
-                  'drop-after': boardDragState.active && boardDragState.targetId === board.id && !boardDragState.insertBefore,
-                }"
-                :data-board-id="board.id"
-                @pointerdown="onBoardPointerDown(board, $event)"
-                @click="switchBoard(board.id)"
-                @dblclick="startEditBoard(board)">
-                <span v-if="editingBoardId !== board.id">{{ board.name }}</span>
-                <input
-                  v-else
-                  ref="boardEditInputs"
-                  class="board-tab-input"
-                  v-model="editingBoardName"
-                  @blur="finishEditBoard"
-                  @keydown.enter="finishEditBoard"
-                  @keydown.escape="editingBoardId = null">
-                <span
-                  v-if="boards.length > 1 && editingBoardId !== board.id"
-                  class="board-tab-delete"
-                  @click.stop="showDeleteBoardModal = board.id">✕</span>
+              <div class="board-tabs" aria-label="Boards">
+                <div
+                  v-for="board in visibleBoards" :key="board.id"
+                  class="board-tab"
+                  :class="{
+                    active: currentBoardId === board.id,
+                    dragging: boardDragState.active && boardDragState.id === board.id,
+                    'drop-before': boardDragState.active && boardDragState.targetId === board.id && boardDragState.insertBefore,
+                    'drop-after': boardDragState.active && boardDragState.targetId === board.id && !boardDragState.insertBefore,
+                  }"
+                  :data-board-id="board.id"
+                  @pointerdown="onBoardPointerDown(board, $event)"
+                  @click="switchBoard(board.id)"
+                  @dblclick="startEditBoard(board)">
+                  <span v-if="editingBoardId !== board.id">{{ board.name }}</span>
+                  <input
+                    v-else
+                    ref="boardEditInputs"
+                    class="board-tab-input"
+                    v-model="editingBoardName"
+                    @blur="finishEditBoard"
+                    @keydown.enter="finishEditBoard"
+                    @keydown.escape="editingBoardId = null">
+                  <span
+                    v-if="boards.length > 1 && editingBoardId !== board.id"
+                    class="board-tab-delete"
+                    @click.stop="showDeleteBoardModal = board.id">✕</span>
+                </div>
+                <p v-if="!visibleBoards.length" class="board-empty">{{ prefs.t('todoNoBoardsInFolder') }}</p>
               </div>
-              <p v-if="!visibleBoards.length" class="board-empty">{{ prefs.t('todoNoBoardsInFolder') }}</p>
             </div>
           </div>
           <div class="board-actions">
@@ -304,6 +299,19 @@
         </div>
       </AppModal>
 
+      <!-- Rename Folder Modal -->
+      <AppModal :visible="showRenameFolderModal" @close="showRenameFolderModal = false">
+        <h2 class="heading-md mb-20">{{ prefs.t('todoRenameFolder') }}</h2>
+        <div class="form-group mb-20">
+          <label class="form-label">{{ prefs.t('todoFolderName') }}</label>
+          <input class="input" v-model="folderRenameName" :placeholder="prefs.t('todoFolderNamePlaceholder')" @keydown.enter="renameFolder">
+        </div>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="showRenameFolderModal = false">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-filled" :disabled="pendingAction === 'renameFolder'" @click="renameFolder">{{ prefs.t('commonSave') }}</button>
+        </div>
+      </AppModal>
+
       <!-- New Column Modal -->
       <AppModal :visible="showColModal" @close="showColModal = false">
         <h2 class="heading-md mb-20">{{ prefs.t('todoNewColumn') }}</h2>
@@ -498,6 +506,7 @@ const kanbanViewportRef = ref<HTMLElement | null>(null)
 const showTaskModal = ref(false)
 const showBoardModal = ref(false)
 const showFolderModal = ref(false)
+const showRenameFolderModal = ref(false)
 const showColModal = ref(false)
 const showDeleteBoardModal = ref<number | null>(null)
 const showDeleteFolderModal = ref<number | null>(null)
@@ -511,6 +520,7 @@ const taskForm = ref({ title: '', description: '', priority: 'medium', column_id
 const boardFormName = ref('')
 const boardFormFolderId = ref('')
 const folderFormName = ref('')
+const folderRenameName = ref('')
 const colFormName = ref('')
 const editingTodoId = ref<number | null>(null)
 const comments = ref<TodoComment[]>([])
@@ -531,11 +541,6 @@ const editingBoardId = ref<number | null>(null)
 const editingBoardName = ref('')
 const boardEditInputs = ref<HTMLInputElement[]>([])
 
-// Folder editing
-const editingFolderId = ref<number | null>(null)
-const editingFolderName = ref('')
-const folderEditInputs = ref<HTMLInputElement[]>([])
-
 const visibleBoards = computed(() => {
   const list = boards.value.filter((board) => {
     if (currentFolderFilter.value === 'all') return true
@@ -546,6 +551,10 @@ const visibleBoards = computed(() => {
 })
 
 const currentBoard = computed(() => boards.value.find(board => board.id === currentBoardId.value) || null)
+const selectedFolder = computed(() => {
+  if (typeof currentFolderFilter.value !== 'number') return null
+  return folders.value.find(folder => folder.id === currentFolderFilter.value) || null
+})
 
 const deleteFolderName = computed(() => {
   if (!showDeleteFolderModal.value) return ''
@@ -814,9 +823,13 @@ function switchBoard(id: number) {
 
 function switchFolder(filter: FolderFilter) {
   currentFolderFilter.value = filter
-  editingFolderId.value = null
   ensureCurrentBoardInFolder()
   if (currentBoardId.value) loadBoardData()
+}
+
+function onFolderFilterChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  switchFolder(value === 'all' || value === 'unfiled' ? value : Number(value))
 }
 
 function ensureCurrentBoardInFolder() {
@@ -952,30 +965,36 @@ async function addFolder() {
   })
 }
 
-function startEditFolder(folder: BoardFolder) {
-  editingFolderId.value = folder.id
-  editingFolderName.value = folder.name
-  nextTick(() => folderEditInputs.value[0]?.focus())
+function openRenameFolderModal() {
+  const folder = selectedFolder.value
+  if (!folder) return
+  folderRenameName.value = folder.name
+  showRenameFolderModal.value = true
 }
 
-async function finishEditFolder() {
-  if (!editingFolderId.value) return
-  const id = editingFolderId.value
-  const name = editingFolderName.value.trim()
-  editingFolderId.value = null
+function openDeleteSelectedFolderModal() {
+  const folder = selectedFolder.value
+  if (!folder) return
+  showDeleteFolderModal.value = folder.id
+}
+
+async function renameFolder() {
+  const folder = selectedFolder.value
+  if (!folder) return
+  const id = folder.id
+  const name = folderRenameName.value.trim()
   if (!name) return
-  try {
+  await runPending('renameFolder', async () => {
     const updated = await api<BoardFolder>(`/api/board-folders/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     })
-    const folder = folders.value.find(item => item.id === id)
-    if (folder) Object.assign(folder, updated)
+    const existing = folders.value.find(item => item.id === id)
+    if (existing) Object.assign(existing, updated)
     boards.value = boards.value.map(board => board.folder_id === id ? { ...board, folder_name: updated.name } : board)
-  } catch (e) {
-    console.error('Failed to edit folder:', e)
-    showError()
-  }
+    showRenameFolderModal.value = false
+    folderRenameName.value = ''
+  })
 }
 
 async function doDeleteFolder() {
@@ -1838,21 +1857,39 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.folder-tabs {
+.board-tabs-row {
   display: flex;
-  gap: 6px;
   align-items: center;
+  gap: 8px;
   min-width: 0;
-  overflow-x: auto;
-  padding: 1px 2px 2px;
-  scrollbar-width: thin;
 }
 
-.folder-tab {
-  min-height: 28px;
-  padding: 4px 10px;
+.folder-filter {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.folder-filter-select {
+  width: 128px;
+  height: 32px;
   border: var(--border-light);
-  border-radius: 100px;
+  border-radius: var(--radius-sm);
+  background: var(--color-card);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: .78rem;
+  padding: 0 8px;
+}
+
+.folder-filter-action {
+  height: 32px;
+  min-width: 32px;
+  padding: 0 9px;
+  border: var(--border-light);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-card) 88%, transparent);
   color: var(--color-muted);
   font: inherit;
@@ -1862,44 +1899,23 @@ onUnmounted(() => {
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   transition: background .15s ease, color .15s ease, border-color .15s ease;
 }
 
-.folder-tab:hover {
+.folder-filter-action:hover {
   background: var(--color-bg-hover, #f5f5f5);
   color: var(--color-ink);
 }
 
-.folder-tab.active {
-  border-color: color-mix(in srgb, var(--color-ink) 22%, transparent);
-  background: color-mix(in srgb, var(--color-ink) 9%, var(--color-card));
-  color: var(--color-ink);
+.folder-filter-action.danger {
+  padding: 0;
+  color: var(--color-danger);
 }
-
-.folder-tab-editable {
-  user-select: none;
-}
-
-.folder-tab-input {
-  width: 72px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  outline: none;
-}
-
-.folder-tab-delete {
-  font-size: .65rem;
-  opacity: 0;
-  transition: opacity .15s ease;
-}
-
-.folder-tab:hover .folder-tab-delete { opacity: .5; }
-.folder-tab-delete:hover { opacity: 1 !important; }
 
 .board-tabs {
+  flex: 1 1 auto;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -2649,7 +2665,10 @@ onUnmounted(() => {
     order: 2;
   }
 
-  .folder-tabs,
+  .board-tabs-row {
+    gap: 6px;
+  }
+
   .board-tabs {
     gap: 6px;
     padding-bottom: 5px;
@@ -2669,12 +2688,15 @@ onUnmounted(() => {
 
   .board-actions .btn,
   .board-folder-select,
-  .folder-tab,
+  .folder-filter,
   .board-tab {
     flex: 0 0 auto;
   }
 
-  .folder-tab-delete,
+  .folder-filter-select {
+    width: 116px;
+  }
+
   .board-tab-delete {
     opacity: .45;
   }
