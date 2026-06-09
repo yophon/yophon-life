@@ -92,17 +92,46 @@ export function updateTodoItem(db: Database, id: number, updates: Record<string,
     if (movedColumn || reordered || contentChanged) {
       const fromColumn = movedColumn ? columnName(db, current.column_id) : "";
       const toColumn = movedColumn ? columnName(db, updated.column_id) : "";
+      const details = todoChangeDetails(current, updated, updates);
+      if (movedColumn) details.unshift(`从「${fromColumn || "未分栏"}」移到「${toColumn || "未分栏"}」`);
       recordKanbanActivity(db, {
         action: movedColumn || (reordered && !contentChanged) ? "move" : "update",
         entity_type: "todo",
         entity_id: id,
         entity_title: updated.title,
         board_id: updated.board_id,
-        details: movedColumn ? `从「${fromColumn || "未分栏"}」移到「${toColumn || "未分栏"}」` : "",
+        details: details.join("；"),
       });
     }
   }
   return updated;
+}
+
+function todoChangeDetails(current: any, updated: any, updates: Record<string, any>): string[] {
+  const details: string[] = [];
+  if (updates.title !== undefined && current.title !== updated.title) {
+    details.push(`标题从「${current.title}」改为「${updated.title}」`);
+  }
+  if (updates.description !== undefined && current.description !== updated.description) {
+    details.push("更新描述");
+  }
+  if (updates.priority !== undefined && current.priority !== updated.priority) {
+    details.push(`优先级 ${priorityText(current.priority)} → ${priorityText(updated.priority)}`);
+  }
+  if (updates.status !== undefined && current.status !== updated.status) {
+    details.push(`状态 ${statusText(current.status)} → ${statusText(updated.status)}`);
+  }
+  return details;
+}
+
+function priorityText(priority: string): string {
+  if (priority === "high") return "高";
+  if (priority === "low") return "低";
+  return "中";
+}
+
+function statusText(status: string): string {
+  return status === "done" ? "完成" : "待办";
 }
 
 function normalizeTitle(value: unknown): string {

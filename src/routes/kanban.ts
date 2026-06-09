@@ -7,6 +7,7 @@ import {
   deleteColumn,
   getBoards,
   getColumns,
+  getKanbanActivities,
   updateBoard,
   updateColumn,
 } from "../db/kanban";
@@ -19,6 +20,13 @@ import { parseId } from "../http";
  */
 export function createKanbanRoutes(db: Database) {
   return new Elysia({ name: "routes/kanban" })
+    .get("/api/kanban/activity", ({ query }) => getKanbanActivities(db, {
+      board_id: numericQuery((query as any).board_id),
+      entity_type: stringQuery((query as any).entity_type),
+      action: stringQuery((query as any).action),
+      q: stringQuery((query as any).q),
+      limit: numericQuery((query as any).limit),
+    }))
     .get("/api/boards", () => getBoards(db))
     .post("/api/boards", ({ body }) => createBoard(db, (body as any).name), {
       body: t.Object({ name: t.String() }),
@@ -52,4 +60,15 @@ export function createKanbanRoutes(db: Database) {
       deleteColumn(db, parseId(params.id));
       return { ok: true };
     });
+}
+
+function stringQuery(value: unknown): string | undefined {
+  const text = String(value ?? "").trim();
+  return text || undefined;
+}
+
+function numericQuery(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }

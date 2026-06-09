@@ -34,6 +34,7 @@
             </div>
           </div>
           <div class="board-actions">
+            <button class="btn btn-sm" @click="openActivityModal">{{ prefs.t('todoHistory') }}</button>
             <button class="btn btn-sm" @click="showBoardModal = true">+ {{ prefs.t('todoAddBoard') }}</button>
             <button class="btn btn-sm" @click="showColModal = true">+ {{ prefs.t('todoAddColumn') }}</button>
             <button class="btn btn-sm btn-filled" @click="() => openNewTodo()">+ {{ prefs.t('todoAddTask') }}</button>
@@ -241,6 +242,66 @@
         </div>
       </AppModal>
 
+      <!-- Activity History Modal -->
+      <AppModal :visible="showActivityModal" @close="showActivityModal = false">
+        <div class="history-modal">
+          <div class="history-header">
+            <h2 class="heading-md">{{ prefs.t('todoHistoryTitle') }}</h2>
+            <button class="btn btn-sm" type="button" :disabled="activityLoading" @click="loadActivity">
+              {{ prefs.t('todoHistoryRefresh') }}
+            </button>
+          </div>
+          <div class="history-filters">
+            <label class="history-filter">
+              <span>{{ prefs.t('todoHistoryEntity') }}</span>
+              <select class="input" v-model="activityFilters.entity">
+                <option value="all">{{ prefs.t('todoHistoryAllEntities') }}</option>
+                <option value="board">{{ prefs.t('activityBoard') }}</option>
+                <option value="column">{{ prefs.t('activityColumn') }}</option>
+                <option value="todo">{{ prefs.t('activityTodo') }}</option>
+              </select>
+            </label>
+            <label class="history-filter">
+              <span>{{ prefs.t('todoHistoryAction') }}</span>
+              <select class="input" v-model="activityFilters.action">
+                <option value="all">{{ prefs.t('todoHistoryAllActions') }}</option>
+                <option value="create">{{ prefs.t('activityCreate') }}</option>
+                <option value="update">{{ prefs.t('activityUpdate') }}</option>
+                <option value="move">{{ prefs.t('activityMove') }}</option>
+                <option value="delete">{{ prefs.t('activityDelete') }}</option>
+              </select>
+            </label>
+            <label class="history-filter history-filter-search">
+              <span>{{ prefs.t('todoHistorySearch') }}</span>
+              <input
+                class="input"
+                v-model="activityFilters.q"
+                :placeholder="prefs.t('todoHistorySearchPlaceholder')"
+                @keydown.enter="loadActivity">
+            </label>
+            <button class="btn btn-filled btn-sm" type="button" :disabled="activityLoading" @click="loadActivity">
+              {{ prefs.t('commonSearch') }}
+            </button>
+          </div>
+          <div class="history-list">
+            <p v-if="activityLoading" class="history-empty">{{ prefs.t('commonLoading') }}</p>
+            <p v-else-if="!activityItems.length" class="history-empty">{{ prefs.t('todoHistoryEmpty') }}</p>
+            <article v-for="activity in activityItems" v-else :key="activity.id" class="history-item">
+              <div class="history-item-main">
+                <span class="history-badge">{{ activityLabel(activity) }}</span>
+                <strong>{{ activity.entity_title }}</strong>
+              </div>
+              <p v-if="activity.details" class="history-details">{{ activity.details }}</p>
+              <div class="history-meta">
+                <time :datetime="activityDateTime(activity.created_at)">{{ formatActivityTime(activity.created_at) }}</time>
+                <span v-if="activity.board_name">「{{ activity.board_name }}」</span>
+                <span>#{{ activity.entity_id }}</span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </AppModal>
+
       <!-- Delete Board Confirm Modal -->
       <AppModal :visible="showDeleteBoardModal !== null" @close="showDeleteBoardModal = null">
         <h2 class="heading-md mb-12">{{ prefs.t('todoDeleteBoard') }}</h2>
@@ -306,6 +367,17 @@ interface Column {
   collapsed?: number
   width?: number | null
 }
+interface KanbanActivity {
+  id: number
+  action: 'create' | 'update' | 'delete' | 'move'
+  entity_type: 'board' | 'column' | 'todo'
+  entity_id: number | null
+  entity_title: string
+  board_id: number | null
+  board_name: string
+  details: string
+  created_at: number
+}
 
 const authStore = useAuthStore()
 const prefs = usePreferencesStore()
@@ -336,6 +408,14 @@ const editingTodoId = ref<number | null>(null)
 const comments = ref<TodoComment[]>([])
 const commentDraft = ref('')
 const commentsLoading = ref(false)
+const showActivityModal = ref(false)
+const activityItems = ref<KanbanActivity[]>([])
+const activityLoading = ref(false)
+const activityFilters = reactive({
+  entity: 'all',
+  action: 'all',
+  q: '',
+})
 
 // Board editing
 const editingBoardId = ref<number | null>(null)
@@ -842,6 +922,54 @@ function formatCommentTime(timestamp: number) {
 }
 
 function commentDateTime(timestamp: number) {
+  return new Date(timestamp * 1000).toISOString()
+}
+
+function openActivityModal() {
+  showActivityModal.value = true
+  loadActivity()
+}
+
+async function loadActivity() {
+  if (!currentBoardId.value) return
+  activityLoading.value = true
+  try {
+    const params = new URLSearchParams({
+      board_id: String(currentBoardId.value),
+      limit: '120',
+    })
+    if (activityFilters.entity !== 'all') params.set('entity_type', activityFilters.entity)
+    if (activityFilters.action !== 'all') params.set('action', activityFilters.action)
+    if (activityFilters.q.trim()) params.set('q', activityFilters.q.trim())
+    activityItems.value = await api<KanbanActivity[]>(`/api/kanban/activity?${params.toString()}`)
+  } catch (e) {
+    console.error('Failed to load kanban activity:', e)
+    showError()
+  } finally {
+    activityLoading.value = false
+  }
+}
+
+function activityLabel(activity: KanbanActivity) {
+  const actionMap = {
+    create: prefs.t('activityCreate'),
+    update: prefs.t('activityUpdate'),
+    delete: prefs.t('activityDelete'),
+    move: prefs.t('activityMove'),
+  }
+  const entityMap = {
+    board: prefs.t('activityBoard'),
+    column: prefs.t('activityColumn'),
+    todo: prefs.t('activityTodo'),
+  }
+  return `${actionMap[activity.action]}${entityMap[activity.entity_type]}`
+}
+
+function formatActivityTime(timestamp: number) {
+  return new Date(timestamp * 1000).toLocaleString()
+}
+
+function activityDateTime(timestamp: number) {
   return new Date(timestamp * 1000).toISOString()
 }
 
@@ -1932,6 +2060,106 @@ onUnmounted(() => {
   min-height: 58px;
 }
 
+.history-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.history-header,
+.history-filters,
+.history-item-main,
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.history-header {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.history-filters {
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: var(--border-light);
+  margin-bottom: 14px;
+}
+
+.history-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+  flex: 1 1 140px;
+  color: var(--color-muted);
+  font-size: .76rem;
+}
+
+.history-filter-search {
+  flex: 2 1 220px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(58vh, 540px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.history-empty,
+.history-item {
+  border: var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--color-bg-soft, rgba(32, 33, 36, .03));
+}
+
+.history-empty {
+  color: var(--color-muted);
+  font-size: .86rem;
+  text-align: center;
+}
+
+.history-item-main {
+  align-items: flex-start;
+}
+
+.history-item-main strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: .9rem;
+  line-height: 1.45;
+}
+
+.history-badge {
+  flex: 0 0 auto;
+  border: var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--color-muted);
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.history-details {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: .84rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-meta {
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-size: .72rem;
+}
+
 /* ── Priority dots ── */
 .kanban-priority {
   width: 8px;
@@ -2130,6 +2358,23 @@ onUnmounted(() => {
 
   .task-comment-form .btn {
     align-self: flex-end;
+  }
+
+  .history-modal {
+    width: 100%;
+  }
+
+  .history-header {
+    align-items: flex-start;
+  }
+
+  .history-filters {
+    align-items: stretch;
+  }
+
+  .history-filter,
+  .history-filters .btn {
+    flex-basis: 100%;
   }
 }
 

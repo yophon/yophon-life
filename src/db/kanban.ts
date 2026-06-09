@@ -20,6 +20,14 @@ export interface KanbanActivityInput {
   details?: string;
 }
 
+export interface KanbanActivityFilters {
+  board_id?: number;
+  entity_type?: string;
+  action?: string;
+  q?: string;
+  limit?: number;
+}
+
 function boardName(db: Database, boardId?: number | null): string {
   if (!boardId) return "";
   const board = db.query("SELECT name FROM kanban_boards WHERE id = ?").get(boardId) as any;
@@ -43,6 +51,43 @@ export function recordKanbanActivity(db: Database, activity: KanbanActivityInput
   );
 }
 
+export function getKanbanActivities(db: Database, filters: KanbanActivityFilters = {}): any[] {
+  const where: string[] = [];
+  const values: any[] = [];
+
+  if (filters.board_id) {
+    where.push("board_id = ?");
+    values.push(filters.board_id);
+  }
+  if (isActivityEntity(filters.entity_type)) {
+    where.push("entity_type = ?");
+    values.push(filters.entity_type);
+  }
+  if (isActivityAction(filters.action)) {
+    where.push("action = ?");
+    values.push(filters.action);
+  }
+
+  const q = String(filters.q ?? "").trim();
+  if (q) {
+    where.push("(entity_title LIKE ? OR board_name LIKE ? OR details LIKE ?)");
+    const like = `%${q}%`;
+    values.push(like, like, like);
+  }
+
+  const limit = clampActivityLimit(filters.limit);
+  values.push(limit);
+
+  const sql = [
+    "SELECT * FROM kanban_activity",
+    where.length ? `WHERE ${where.join(" AND ")}` : "",
+    "ORDER BY created_at DESC, id DESC",
+    "LIMIT ?",
+  ].filter(Boolean).join(" ");
+
+  return db.query(sql).all(...values);
+}
+
 export function getKanbanActivitiesByMonth(db: Database, year: number, month: number): Record<string, any[]> {
   const start = Math.floor(new Date(year, month - 1, 1).getTime() / 1000);
   const end = Math.floor(new Date(year, month, 1).getTime() / 1000);
@@ -56,6 +101,20 @@ export function getKanbanActivitiesByMonth(db: Database, year: number, month: nu
     acc[day].push(row);
     return acc;
   }, {} as Record<string, any[]>);
+}
+
+function isActivityAction(value: unknown): value is KanbanActivityAction {
+  return value === "create" || value === "update" || value === "delete" || value === "move";
+}
+
+function isActivityEntity(value: unknown): value is KanbanActivityEntity {
+  return value === "board" || value === "column" || value === "todo";
+}
+
+function clampActivityLimit(value: unknown): number {
+  const limit = Number(value ?? 80);
+  if (!Number.isFinite(limit)) return 80;
+  return Math.max(1, Math.min(200, Math.round(limit)));
 }
 
 function formatLocalDate(epochSeconds: number): string {
@@ -182,14 +241,15 @@ export function updateColumn(db: Database, id: number, updates: { name?: string;
     const reordered =
       (updates.sort_order !== undefined && current.sort_order !== updated.sort_order) ||
       (updates.row_index !== undefined && current.row_index !== updated.row_index);
-    if (renamed || reordered) {
+    const details = columnChangeDetails(current, updated, updates);
+    if (renamed || reordered || details.length) {
       recordKanbanActivity(db, {
         action: reordered && !renamed ? "move" : "update",
         entity_type: "column",
         entity_id: id,
         entity_title: updated.name,
         board_id: updated.board_id,
-        details: renamed ? `从「${current.name}」改为「${updated.name}」` : "",
+        details: details.join("；"),
       });
     }
   }
@@ -229,6 +289,20 @@ function normalizeName(value: unknown, errorCode: string): string {
   const name = String(value ?? "").trim();
   if (!name) throw new Error(errorCode);
   return name;
+}
+
+function columnChangeDetails(current: any, updated: any, updates: { name?: string; sort_order?: number; row_index?: number; collapsed?: number; width?: number | null }): string[] {
+  const details: string[] = [];
+  if (updates.name !== undefined && current.name !== updated.name) {
+    details.push(`从「${current.name}」改为「${updated.name}」`);
+  }
+  if (updates.collapsed !== undefined && Number(current.collapsed || 0) !== Number(updated.collapsed || 0)) {
+    details.push(Number(updated.collapsed || 0) === 1 ? "折叠栏" : "展开栏");
+  }
+  if (updates.width !== undefined && Number(current.width || 0) !== Number(updated.width || 0)) {
+    details.push(`宽度 ${current.width || "默认"} → ${updated.width || "默认"}`);
+  }
+  return details;
 }
 
 function normalizeSortOrder(value: unknown): number {
