@@ -76,6 +76,7 @@ function createTables(db: Database) {
   db.run(`CREATE TABLE IF NOT EXISTS todo_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     todo_id INTEGER NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE,
+    author TEXT DEFAULT '用户',
     content TEXT NOT NULL,
     created_at INTEGER DEFAULT (unixepoch()),
     updated_at INTEGER DEFAULT (unixepoch())
@@ -144,10 +145,12 @@ function runMigrations(db: Database) {
   tryAlter("ALTER TABLE kanban_columns ADD COLUMN row_index INTEGER DEFAULT 0");
   tryAlter("ALTER TABLE kanban_columns ADD COLUMN width INTEGER");
   tryAlter("ALTER TABLE kanban_columns ADD COLUMN height INTEGER");
+  tryAlter("ALTER TABLE todo_comments ADD COLUMN author TEXT DEFAULT '用户'");
 
   db.run(`CREATE TABLE IF NOT EXISTS todo_comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     todo_id INTEGER NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE,
+    author TEXT DEFAULT '用户',
     content TEXT NOT NULL,
     created_at INTEGER DEFAULT (unixepoch()),
     updated_at INTEGER DEFAULT (unixepoch())

@@ -2,18 +2,31 @@ import type { Database } from "bun:sqlite";
 
 export interface TodoCommentInput {
   content: string;
+  author?: string;
 }
 
-export function getTodoComments(db: Database, todoId: number): any[] {
+export interface TodoComment {
+  id: number;
+  todo_id: number;
+  author: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
+}
+
+const DEFAULT_COMMENT_AUTHOR = "用户";
+
+export function getTodoComments(db: Database, todoId: number): TodoComment[] {
   ensureTodoExists(db, todoId);
-  return db.query("SELECT * FROM todo_comments WHERE todo_id = ? ORDER BY created_at ASC, id ASC").all(todoId);
+  return db.query("SELECT * FROM todo_comments WHERE todo_id = ? ORDER BY created_at ASC, id ASC").all(todoId) as TodoComment[];
 }
 
-export function createTodoComment(db: Database, todoId: number, input: TodoCommentInput): any {
+export function createTodoComment(db: Database, todoId: number, input: TodoCommentInput): TodoComment {
   ensureTodoExists(db, todoId);
   const content = normalizeCommentContent(input.content);
-  const result = db.run("INSERT INTO todo_comments (todo_id, content) VALUES (?, ?)", [todoId, content]);
-  return db.query("SELECT * FROM todo_comments WHERE id = ?").get(Number(result.lastInsertRowid));
+  const author = normalizeCommentAuthor(input.author);
+  const result = db.run("INSERT INTO todo_comments (todo_id, author, content) VALUES (?, ?, ?)", [todoId, author, content]);
+  return db.query("SELECT * FROM todo_comments WHERE id = ?").get(Number(result.lastInsertRowid)) as TodoComment;
 }
 
 export function deleteTodoComment(db: Database, todoId: number, commentId: number): void {
@@ -31,4 +44,10 @@ function normalizeCommentContent(value: unknown): string {
   if (!content) throw new Error("INVALID_TODO_COMMENT");
   if (content.length > 2000) throw new Error("INVALID_TODO_COMMENT");
   return content;
+}
+
+function normalizeCommentAuthor(value: unknown): string {
+  const author = String(value ?? DEFAULT_COMMENT_AUTHOR).trim() || DEFAULT_COMMENT_AUTHOR;
+  if (author.length > 32) throw new Error("INVALID_TODO_COMMENT");
+  return author;
 }

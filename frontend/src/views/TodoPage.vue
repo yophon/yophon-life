@@ -203,6 +203,7 @@
             <article v-for="comment in comments" v-else :key="comment.id" class="task-comment">
               <p>{{ comment.content }}</p>
               <div class="task-comment-meta">
+                <span class="task-comment-identity">{{ comment.author || '用户' }}</span>
                 <time :datetime="commentDateTime(comment.created_at)">{{ formatCommentTime(comment.created_at) }}</time>
                 <button class="task-comment-delete" type="button" :disabled="pendingAction === `deleteComment:${comment.id}`" @click="deleteComment(comment)">
                   {{ prefs.t('commonDelete') }}
@@ -372,6 +373,7 @@ interface TodoItem {
 interface TodoComment {
   id: number
   todo_id: number
+  author: string
   content: string
   created_at: number
   updated_at: number
@@ -926,7 +928,7 @@ async function addComment() {
   await runPending('addComment', async () => {
     const comment = await api<TodoComment>(`/api/todo/${todoId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, author: '用户' }),
     })
     comments.value.push(comment)
     commentDraft.value = ''
@@ -2077,6 +2079,15 @@ onUnmounted(() => {
   margin-top: 8px;
   color: var(--color-muted);
   font-size: .72rem;
+}
+
+.task-comment-identity {
+  border: var(--border-light);
+  border-radius: 999px;
+  color: var(--color-ink);
+  font-size: .7rem;
+  line-height: 1;
+  padding: 3px 7px;
 }
 
 .task-comment-delete {

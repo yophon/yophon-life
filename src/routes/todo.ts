@@ -31,6 +31,7 @@ export function createTodoRoutes(db: Database) {
     .post("/:id/comments", ({ params, body }) => createTodoComment(db, parseId(params.id), body as any), {
       body: t.Object({
         content: t.String(),
+        author: t.Optional(t.String()),
       }),
     })
     .delete("/:id/comments/:commentId", ({ params }) => {
