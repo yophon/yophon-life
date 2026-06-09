@@ -2,13 +2,17 @@ import { Elysia, t } from "elysia";
 import type { Database } from "bun:sqlite";
 import {
   createBoard,
+  createBoardFolder,
   createColumn,
   deleteBoard,
+  deleteBoardFolder,
   deleteColumn,
+  getBoardFolders,
   getBoards,
   getColumns,
   getKanbanActivities,
   updateBoard,
+  updateBoardFolder,
   updateColumn,
 } from "../db/kanban";
 import { getTodosByBoard } from "../db/todo";
@@ -29,14 +33,33 @@ export function createKanbanRoutes(db: Database) {
       q: stringQuery((query as any).q),
       limit: numericQuery((query as any).limit),
     }))
-    .get("/api/boards", () => getBoards(db))
-    .post("/api/boards", ({ body }) => createBoard(db, (body as any).name), {
+    .get("/api/board-folders", () => getBoardFolders(db))
+    .post("/api/board-folders", ({ body }) => createBoardFolder(db, (body as any).name), {
       body: t.Object({ name: t.String() }),
+    })
+    .patch("/api/board-folders/:id", ({ params, body }) => updateBoardFolder(db, parseId(params.id), body as any), {
+      body: t.Object({
+        name: t.Optional(t.String()),
+        sort_order: t.Optional(t.Number()),
+      }),
+    })
+    .delete("/api/board-folders/:id", ({ params }) => {
+      deleteBoardFolder(db, parseId(params.id));
+      return { ok: true };
+    })
+
+    .get("/api/boards", () => getBoards(db))
+    .post("/api/boards", ({ body }) => createBoard(db, (body as any).name, (body as any).folder_id), {
+      body: t.Object({
+        name: t.String(),
+        folder_id: t.Optional(t.Nullable(t.Number())),
+      }),
     })
     .patch("/api/boards/:id", ({ params, body }) => updateBoard(db, parseId(params.id), body as any), {
       body: t.Object({
         name: t.Optional(t.String()),
         sort_order: t.Optional(t.Number()),
+        folder_id: t.Optional(t.Nullable(t.Number())),
       }),
     })
     .delete("/api/boards/:id", ({ params }) => {

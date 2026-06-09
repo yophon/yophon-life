@@ -42,9 +42,17 @@ function createTables(db: Database) {
     pinned INTEGER DEFAULT 0
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS kanban_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (unixepoch())
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS kanban_boards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    folder_id INTEGER REFERENCES kanban_folders(id) ON DELETE SET NULL,
     sort_order INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch())
   )`);
@@ -135,6 +143,7 @@ function runMigrations(db: Database) {
   tryAlter("ALTER TABLE todo_items ADD COLUMN board_id INTEGER DEFAULT 1");
   tryAlter("ALTER TABLE todo_items ADD COLUMN column_id INTEGER");
   tryAlter("ALTER TABLE todo_items ADD COLUMN sort_order INTEGER DEFAULT 0");
+  tryAlter("ALTER TABLE kanban_boards ADD COLUMN folder_id INTEGER REFERENCES kanban_folders(id) ON DELETE SET NULL");
 
   tryAlter("ALTER TABLE diary_entries ADD COLUMN updated_at INTEGER");
   tryAlter("ALTER TABLE diary_entries ADD COLUMN pinned INTEGER DEFAULT 0");

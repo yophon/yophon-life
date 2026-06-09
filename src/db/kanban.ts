@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 
 const COLUMN_ALLOWED_FIELDS = ["name", "sort_order", "row_index", "collapsed", "width"] as const;
-const BOARD_ALLOWED_FIELDS = ["name", "sort_order"] as const;
+const BOARD_ALLOWED_FIELDS = ["name", "sort_order", "folder_id"] as const;
 const SORT_GAP = 1000;
 const MIN_SORT_GAP = 2;
 const MIN_COLUMN_WIDTH = 240;
@@ -30,10 +30,35 @@ export interface KanbanActivityFilters {
   limit?: number;
 }
 
+export interface KanbanFolderInput {
+  name?: string;
+  sort_order?: number;
+}
+
 function boardName(db: Database, boardId?: number | null): string {
   if (!boardId) return "";
   const board = db.query("SELECT name FROM kanban_boards WHERE id = ?").get(boardId) as any;
   return board?.name || "";
+}
+
+function folderName(db: Database, folderId?: number | null): string {
+  if (!folderId) return "未归档";
+  const folder = db.query("SELECT name FROM kanban_folders WHERE id = ?").get(folderId) as any;
+  return folder?.name || "未归档";
+}
+
+function resolveFolderId(db: Database, value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const folderId = Number(value);
+  if (!Number.isInteger(folderId) || folderId <= 0) throw new Error("INVALID_BOARD_FOLDER_ID");
+  const folder = db.query("SELECT id FROM kanban_folders WHERE id = ?").get(folderId) as any;
+  if (!folder) throw new Error("INVALID_BOARD_FOLDER_ID");
+  return folder.id;
+}
+
+function maxBoardSortOrder(db: Database, folderId: number | null): number {
+  const row = db.query("SELECT MAX(sort_order) as ms FROM kanban_boards WHERE folder_id IS ?").get(folderId) as any;
+  return row?.ms ?? -SORT_GAP;
 }
 
 export function recordKanbanActivity(db: Database, activity: KanbanActivityInput): void {
@@ -143,15 +168,52 @@ function formatLocalDate(epochSeconds: number): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getBoards(db: Database): any[] {
-  return db.query("SELECT * FROM kanban_boards ORDER BY sort_order ASC").all();
+export function getBoardFolders(db: Database): any[] {
+  return db.query("SELECT * FROM kanban_folders ORDER BY sort_order ASC, id ASC").all();
 }
 
-export function createBoard(db: Database, name: string): any {
-  name = normalizeName(name, "INVALID_BOARD_NAME");
-  const maxRow = db.query("SELECT MAX(sort_order) as ms FROM kanban_boards").get() as any;
+export function createBoardFolder(db: Database, name: string): any {
+  name = normalizeName(name, "INVALID_BOARD_FOLDER_NAME");
+  const maxRow = db.query("SELECT MAX(sort_order) as ms FROM kanban_folders").get() as any;
   const sort_order = (maxRow?.ms ?? -SORT_GAP) + SORT_GAP;
-  const result = db.run("INSERT INTO kanban_boards (name, sort_order) VALUES (?, ?)", [name, sort_order]);
+  const result = db.run("INSERT INTO kanban_folders (name, sort_order) VALUES (?, ?)", [name, sort_order]);
+  return db.query("SELECT * FROM kanban_folders WHERE id = ?").get(Number(result.lastInsertRowid));
+}
+
+export function updateBoardFolder(db: Database, id: number, updates: KanbanFolderInput): any {
+  const next: KanbanFolderInput = {};
+  if (updates.name !== undefined) next.name = normalizeName(updates.name, "INVALID_BOARD_FOLDER_NAME");
+  if (updates.sort_order !== undefined) next.sort_order = normalizeSortOrder(updates.sort_order);
+  const keys = Object.keys(next);
+  if (!keys.length) return null;
+
+  const values = keys.map((key) => (next as any)[key]);
+  values.push(id);
+  db.run(`UPDATE kanban_folders SET ${keys.map((key) => `${key} = ?`).join(", ")} WHERE id = ?`, values);
+  if (next.sort_order !== undefined) normalizeFolderSortOrdersIfNeeded(db);
+  return db.query("SELECT * FROM kanban_folders WHERE id = ?").get(id);
+}
+
+export function deleteBoardFolder(db: Database, id: number): void {
+  db.run("UPDATE kanban_boards SET folder_id = NULL WHERE folder_id = ?", [id]);
+  db.run("DELETE FROM kanban_folders WHERE id = ?", [id]);
+  normalizeBoardSortOrdersIfNeeded(db, null);
+}
+
+export function getBoards(db: Database): any[] {
+  return db.query(`
+    SELECT b.*, f.name AS folder_name, f.sort_order AS folder_sort_order
+    FROM kanban_boards b
+    LEFT JOIN kanban_folders f ON f.id = b.folder_id
+    ORDER BY COALESCE(f.sort_order, -1) ASC, b.sort_order ASC, b.id ASC
+  `).all();
+}
+
+export function createBoard(db: Database, name: string, folderId?: number | null): any {
+  name = normalizeName(name, "INVALID_BOARD_NAME");
+  const resolvedFolderId = resolveFolderId(db, folderId);
+  const sort_order = maxBoardSortOrder(db, resolvedFolderId) + SORT_GAP;
+  const result = db.run("INSERT INTO kanban_boards (name, folder_id, sort_order) VALUES (?, ?, ?)", [name, resolvedFolderId, sort_order]);
   const boardId = Number(result.lastInsertRowid);
   // Default columns mirror the seeded board.
   db.run("INSERT INTO kanban_columns (board_id, name, sort_order) VALUES (?, '待办', 0)", [boardId]);
@@ -166,32 +228,53 @@ export function createBoard(db: Database, name: string): any {
     board_name: name,
   });
   const columns = db.query("SELECT * FROM kanban_columns WHERE board_id = ? ORDER BY sort_order").all(boardId);
-  return { id: boardId, name, sort_order, columns };
+  return { id: boardId, name, folder_id: resolvedFolderId, folder_name: folderName(db, resolvedFolderId), sort_order, columns };
 }
 
-export function updateBoard(db: Database, id: number, updates: { name?: string; sort_order?: number }): any {
-  updates = normalizeBoardUpdates(updates);
+export function updateBoard(db: Database, id: number, updates: { name?: string; sort_order?: number; folder_id?: number | null }): any {
+  updates = normalizeBoardUpdates(db, updates);
   const keys = Object.keys(updates).filter((k) => BOARD_ALLOWED_FIELDS.includes(k as any));
   if (keys.length === 0) return null;
   const current = db.query("SELECT * FROM kanban_boards WHERE id = ?").get(id) as any;
+  if (!current) return null;
+  if (updates.folder_id !== undefined && current.folder_id !== updates.folder_id && updates.sort_order === undefined) {
+    updates.sort_order = maxBoardSortOrder(db, updates.folder_id ?? null) + SORT_GAP;
+    if (!keys.includes("sort_order")) keys.push("sort_order");
+  }
   const sets = keys.map((k) => `${k} = ?`).join(", ");
   const values = keys.map((k) => (updates as any)[k]);
   values.push(id);
   db.run(`UPDATE kanban_boards SET ${sets} WHERE id = ?`, values);
-  if (updates.sort_order !== undefined) normalizeBoardSortOrdersIfNeeded(db);
-  const updated = db.query("SELECT * FROM kanban_boards WHERE id = ?").get(id) as any;
+  if (updates.sort_order !== undefined || updates.folder_id !== undefined) {
+    const targetFolderId = updates.folder_id !== undefined ? updates.folder_id : current.folder_id ?? null;
+    normalizeBoardSortOrdersIfNeeded(db, targetFolderId);
+    if (updates.folder_id !== undefined && current.folder_id !== updates.folder_id) {
+      normalizeBoardSortOrdersIfNeeded(db, current.folder_id ?? null);
+    }
+  }
+  const updated = db.query(`
+    SELECT b.*, f.name AS folder_name, f.sort_order AS folder_sort_order
+    FROM kanban_boards b
+    LEFT JOIN kanban_folders f ON f.id = b.folder_id
+    WHERE b.id = ?
+  `).get(id) as any;
   if (current && updated) {
     const renamed = updates.name !== undefined && current.name !== updated.name;
     const reordered = updates.sort_order !== undefined && current.sort_order !== updated.sort_order;
-    if (!renamed && !reordered) return updated;
+    const movedFolder = updates.folder_id !== undefined && current.folder_id !== updated.folder_id;
+    if (!renamed && !reordered && !movedFolder) return updated;
+    const details = [
+      renamed ? `从「${current.name}」改为「${updated.name}」` : "",
+      movedFolder ? `文件夹「${folderName(db, current.folder_id)}」→「${folderName(db, updated.folder_id)}」` : "",
+    ].filter(Boolean).join("；");
     recordKanbanActivity(db, {
-      action: reordered && !renamed ? "move" : "update",
+      action: (reordered || movedFolder) && !renamed ? "move" : "update",
       entity_type: "board",
       entity_id: id,
       entity_title: updated.name,
       board_id: id,
       board_name: updated.name,
-      details: renamed ? `从「${current.name}」改为「${updated.name}」` : "",
+      details,
     });
   }
   return updated;
@@ -346,10 +429,11 @@ function clampDimension(value: unknown, min: number, max: number): number | null
   return Math.max(min, Math.min(max, Math.round(dimension)));
 }
 
-function normalizeBoardUpdates(updates: { name?: string; sort_order?: number }) {
+function normalizeBoardUpdates(db: Database, updates: { name?: string; sort_order?: number; folder_id?: number | null }) {
   const next: any = { ...updates };
   if (next.name !== undefined) next.name = normalizeName(next.name, "INVALID_BOARD_NAME");
   if (next.sort_order !== undefined) next.sort_order = normalizeSortOrder(next.sort_order);
+  if (next.folder_id !== undefined) next.folder_id = resolveFolderId(db, next.folder_id);
   return next;
 }
 
@@ -363,8 +447,12 @@ function normalizeColumnUpdates(updates: { name?: string; sort_order?: number; r
   return next;
 }
 
-function normalizeBoardSortOrdersIfNeeded(db: Database): void {
-  normalizeSortOrdersIfNeeded(db, "kanban_boards", "1 = 1", []);
+function normalizeFolderSortOrdersIfNeeded(db: Database): void {
+  normalizeSortOrdersIfNeeded(db, "kanban_folders", "1 = 1", []);
+}
+
+function normalizeBoardSortOrdersIfNeeded(db: Database, folderId: number | null): void {
+  normalizeSortOrdersIfNeeded(db, "kanban_boards", "folder_id IS ?", [folderId]);
 }
 
 function normalizeColumnSortOrdersIfNeeded(db: Database, boardId: number | undefined, rowIndex: number): void {
@@ -372,7 +460,7 @@ function normalizeColumnSortOrdersIfNeeded(db: Database, boardId: number | undef
   normalizeSortOrdersIfNeeded(db, "kanban_columns", "board_id = ? AND row_index = ?", [boardId, rowIndex]);
 }
 
-function normalizeSortOrdersIfNeeded(db: Database, table: "kanban_boards" | "kanban_columns", where: string, params: any[]): void {
+function normalizeSortOrdersIfNeeded(db: Database, table: "kanban_folders" | "kanban_boards" | "kanban_columns", where: string, params: any[]): void {
   const rows = db.query(`SELECT id, sort_order FROM ${table} WHERE ${where} ORDER BY sort_order ASC, id ASC`).all(...params) as any[];
   let shouldNormalize = false;
   for (let i = 1; i < rows.length; i++) {
