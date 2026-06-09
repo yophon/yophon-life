@@ -6,8 +6,9 @@
         <div class="board-toolbar fade-up">
           <div class="board-navigation">
             <div class="board-tabs-row">
-              <div class="folder-filter" aria-label="Board folders">
-                <select class="folder-filter-select" :value="String(currentFolderFilter)" @change="onFolderFilterChange">
+              <div class="folder-control folder-filter" aria-label="Board folders">
+                <span class="folder-control-label">{{ prefs.t('todoFolderView') }}</span>
+                <select class="folder-control-select folder-filter-select" :value="String(currentFolderFilter)" @change="onFolderFilterChange">
                   <option value="all">{{ prefs.t('todoAllFolders') }}</option>
                   <option value="unfiled">{{ prefs.t('todoUnfiledBoards') }}</option>
                   <option v-for="folder in folders" :key="folder.id" :value="String(folder.id)">{{ folder.name }}</option>
@@ -62,10 +63,13 @@
             </div>
           </div>
           <div class="board-actions">
-            <select v-if="currentBoard" class="board-folder-select" :value="currentBoard.folder_id ?? ''" @change="onCurrentBoardFolderChange">
-              <option value="">{{ prefs.t('todoUnfiledBoards') }}</option>
-              <option v-for="folder in folders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
-            </select>
+            <label v-if="currentBoard" class="folder-control board-folder-control">
+              <span class="folder-control-label">{{ prefs.t('todoBoardFolderShort') }}</span>
+              <select class="folder-control-select board-folder-select" :value="currentBoard.folder_id ?? ''" @change="onCurrentBoardFolderChange">
+                <option value="">{{ prefs.t('todoUnfiledBoards') }}</option>
+                <option v-for="folder in folders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
+              </select>
+            </label>
             <button class="btn btn-sm" @click="openActivityModal()">{{ prefs.t('todoHistory') }}</button>
             <button class="btn btn-sm" @click="openFolderModal">+ {{ prefs.t('todoAddFolder') }}</button>
             <button class="btn btn-sm" @click="openBoardModal">+ {{ prefs.t('todoAddBoard') }}</button>
@@ -1866,31 +1870,62 @@ onUnmounted(() => {
 
 .folder-filter {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
+  border-color: color-mix(in srgb, var(--color-ink) 16%, transparent);
+  background: color-mix(in srgb, var(--color-ink) 5%, var(--color-card));
 }
 
-.folder-filter-select {
-  width: 128px;
+.folder-control {
   height: 32px;
   border: var(--border-light);
   border-radius: var(--radius-sm);
-  background: var(--color-card);
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.folder-control-label {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-right: var(--border-light);
+  color: var(--color-muted);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.folder-control-select {
+  height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-ink);
   font: inherit;
   font-size: .78rem;
   padding: 0 8px;
+  outline: none;
+}
+
+.folder-control-select:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 32%, transparent);
+}
+
+.folder-filter-select {
+  width: 122px;
 }
 
 .folder-filter-action {
-  height: 32px;
+  align-self: stretch;
+  height: auto;
   min-width: 32px;
   padding: 0 9px;
-  border: var(--border-light);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-card) 88%, transparent);
+  border: 0;
+  border-left: var(--border-light);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-muted);
   font: inherit;
   font-size: .74rem;
@@ -2005,16 +2040,19 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.board-folder-control {
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--color-accent-light) 72%, var(--color-card));
+}
+
+.board-folder-control .folder-control-label {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-light) 76%, transparent);
+}
+
 .board-folder-select {
-  min-width: 118px;
-  height: 32px;
-  border: var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--color-card);
-  color: var(--color-ink);
-  font: inherit;
-  font-size: .78rem;
-  padding: 0 8px;
+  width: 114px;
 }
 
 .board-error {
@@ -2687,6 +2725,7 @@ onUnmounted(() => {
   }
 
   .board-actions .btn,
+  .board-folder-control,
   .board-folder-select,
   .folder-filter,
   .board-tab {
