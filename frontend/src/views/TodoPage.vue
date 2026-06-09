@@ -1891,6 +1891,10 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
+  .todo-page {
+    overflow: hidden;
+  }
+
   .board-toolbar-section {
     padding: 10px 14px 8px;
   }
@@ -1902,6 +1906,8 @@ onUnmounted(() => {
 
   .board-tabs {
     order: 2;
+    gap: 6px;
+    padding-bottom: 5px;
   }
 
   .board-actions {
@@ -1909,15 +1915,109 @@ onUnmounted(() => {
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .board-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .board-actions .btn,
+  .board-tab {
+    flex: 0 0 auto;
+  }
+
+  .board-tab-delete {
+    opacity: .45;
   }
 
   .board-error {
     grid-column: auto;
   }
 
+  .kanban-section {
+    padding-top: 10px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .kanban-viewport {
+    --kanban-col-width: calc(100vw - 28px);
+    padding: 0 14px;
+  }
+
+  .kanban-row {
+    gap: 12px;
+  }
+
   .kanban-col {
-    width: calc(100vw - 48px);
-    flex-basis: calc(100vw - 48px);
+    width: var(--kanban-col-width) !important;
+    min-width: var(--kanban-col-width);
+    max-width: var(--kanban-col-width);
+    flex-basis: var(--kanban-col-width) !important;
+    border-radius: var(--radius-sm);
+  }
+
+  .kanban-col.collapsed {
+    --collapsed-col-width: 54px;
+    min-width: var(--collapsed-col-width);
+  }
+
+  .kanban-col-header {
+    padding: 14px 14px 12px;
+  }
+
+  .kanban-cards {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .kanban-card {
+    padding: 14px;
+  }
+
+  .kanban-card-id {
+    position: static;
+    display: inline-flex;
+    width: max-content;
+    margin-bottom: 8px;
+    opacity: .8;
+  }
+
+  .kanban-card-delete,
+  .kanban-col-delete,
+  .kanban-add-card {
+    opacity: .55;
+  }
+
+  .kanban-add-card {
+    min-height: 42px;
+  }
+
+  .kanban-resize-handle {
+    display: none;
+  }
+
+  .task-comment-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .task-comment-form .btn {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 420px) {
+  .board-actions .btn-sm {
+    padding-inline: 12px;
+  }
+
+  .kanban-col-title {
+    font-size: .8rem;
+  }
+
+  .kanban-card-title {
+    font-size: .9rem;
   }
 }
 </style>

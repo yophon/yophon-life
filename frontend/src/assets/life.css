@@ -6,6 +6,9 @@
 }
 
 .life-nav-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 7px 16px;
   border-radius: 100px;
   font-size: 0.85rem;
@@ -224,6 +227,17 @@
 }
 
 @media (max-width: 820px) {
+  .life-nav-links a,
+  .life-nav-logout {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .life-nav-logout {
+    border-radius: var(--radius-sm);
+    padding: 9px 16px;
+  }
+
   .settings-hero,
   .settings-panel-header {
     flex-direction: column;
@@ -245,5 +259,38 @@
   .month-picker-popover {
     left: 0;
     transform: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-preview {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .segmented-control {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: 1fr;
+    border-radius: var(--radius-sm);
+  }
+
+  .segmented-control button {
+    border-radius: var(--radius-xs);
+    white-space: normal;
+  }
+
+  .settings-summary div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .settings-summary strong {
+    text-align: left;
+  }
+
+  .settings-actions .btn {
+    width: 100%;
   }
 }

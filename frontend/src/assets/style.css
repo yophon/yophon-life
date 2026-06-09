@@ -160,6 +160,7 @@ ul, ol { list-style: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
 }
 
 .nav-logo {
@@ -1537,16 +1538,129 @@ select.input {
   .finance-summary { grid-template-columns: 1fr; }
   .finance-summary > * + * { border-left: none; border-top: var(--border); }
   .nav-links { display: none; }
-  .nav-links.open { display: flex; flex-direction: column; position: absolute; top: 56px; right: 24px; background: var(--color-card); border: var(--border); border-radius: var(--radius-md); padding: 8px; gap: 2px; box-shadow: var(--shadow-md); }
+  .nav-links.open {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 16px;
+    left: 16px;
+    background: var(--color-card);
+    border: var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    gap: 2px;
+    box-shadow: var(--shadow-md);
+  }
   .nav-mobile-toggle { display: flex; }
   :root { --radius-lg: 28px; --radius-md: 18px; }
+  .container,
+  .container-sm { padding: 0 16px; }
+  .section { padding: 32px 0; }
   .card-pad { padding: 24px; }
   .card-pad-lg { padding: 32px; }
   .chart-bars { height: 140px; }
+  .pie-chart-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pie-chart {
+    width: 132px;
+    height: 132px;
+    align-self: center;
+  }
+  .transaction-row {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .transaction-info {
+    min-width: 0;
+  }
+  .transaction-info .text-sm {
+    overflow-wrap: anywhere;
+  }
+  .transaction-amount {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 12px;
+  }
+  .modal {
+    margin: 0;
+    max-width: none;
+    max-height: min(88dvh, 720px);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+  }
   .footer-inner {
     flex-direction: column;
     gap: 16px;
     text-align: center;
     padding: 28px 24px;
+  }
+}
+
+@media (max-width: 520px) {
+  .nav-inner {
+    padding: 10px 14px;
+  }
+
+  .nav-logo {
+    font-size: 1.2rem;
+  }
+
+  .heading-xl {
+    font-size: 2.2rem;
+    line-height: 1.08;
+  }
+
+  .heading-lg {
+    font-size: 1.8rem;
+  }
+
+  .card-pad,
+  .card-pad-lg {
+    padding: 20px;
+  }
+
+  .btn {
+    padding: 10px 18px;
+  }
+
+  .btn-sm {
+    padding: 7px 13px;
+  }
+
+  .finance-amount {
+    font-size: 1.45rem;
+  }
+
+  .finance-month-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .finance-month-nav .month-label {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .chart-bars {
+    gap: 5px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .chart-bar-wrap {
+    min-width: 22px;
+  }
+
+  .category-row {
+    flex-wrap: wrap;
+  }
+
+  .category-row .cat-name {
+    flex-basis: calc(100% - 40px);
   }
 }
