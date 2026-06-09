@@ -6,14 +6,13 @@ export interface TodoInput {
   title: string;
   description?: string;
   priority?: string;
-  status?: string;
+  due_date?: string | null;
   board_id?: number;
   column_id?: number;
 }
 
-const TODO_ALLOWED_FIELDS = ["title", "description", "priority", "status", "column_id", "sort_order"] as const;
+const TODO_ALLOWED_FIELDS = ["title", "description", "priority", "due_date", "column_id", "sort_order"] as const;
 const PRIORITIES = new Set(["high", "medium", "low"]);
-const STATUSES = new Set(["todo", "done"]);
 const SORT_GAP = 1000;
 const MIN_SORT_GAP = 2;
 
@@ -26,19 +25,35 @@ export function getTodosByBoard(db: Database, boardId: number): any[] {
   return db.query("SELECT * FROM todo_items WHERE board_id = ? ORDER BY sort_order ASC").all(boardId);
 }
 
+// Cross-board task search for quick navigation. Joins board/column names so the
+// frontend can show where each hit lives and jump to it.
+export function searchTodos(db: Database, keyword: string): any[] {
+  const pattern = `%${keyword}%`;
+  return db.query(
+    `SELECT t.id, t.title, t.description, t.priority, t.due_date, t.board_id, t.column_id,
+            b.name AS board_name, c.name AS column_name
+     FROM todo_items t
+     LEFT JOIN kanban_boards b ON b.id = t.board_id
+     LEFT JOIN kanban_columns c ON c.id = t.column_id
+     WHERE t.title LIKE ? OR t.description LIKE ?
+     ORDER BY t.updated_at DESC
+     LIMIT 50`,
+  ).all(pattern, pattern);
+}
+
 export function createTodoItem(db: Database, item: TodoInput): any {
   const title = normalizeTitle(item.title);
   const description = item.description?.trim() || "";
   const priority = normalizePriority(item.priority);
-  const status = normalizeStatus(item.status);
+  const due_date = normalizeDueDate(item.due_date);
   const board_id = item.board_id || 1;
   const { column_id } = item;
   const columnId = resolveColumnId(db, board_id, column_id);
   const maxRow = db.query("SELECT MAX(sort_order) as max_sort FROM todo_items WHERE board_id = ? AND column_id IS ?").get(board_id, columnId) as any;
   const sort_order = (maxRow?.max_sort ?? -SORT_GAP) + SORT_GAP;
   const result = db.run(
-    "INSERT INTO todo_items (title, description, priority, status, board_id, column_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [title, description, priority, status, board_id, columnId, sort_order],
+    "INSERT INTO todo_items (title, description, priority, due_date, board_id, column_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [title, description, priority, due_date, board_id, columnId, sort_order],
   );
   const id = Number(result.lastInsertRowid);
   recordKanbanActivity(db, {
@@ -54,7 +69,7 @@ export function createTodoItem(db: Database, item: TodoInput): any {
     title,
     description,
     priority,
-    status,
+    due_date,
     board_id,
     column_id: columnId,
     sort_order,
@@ -87,7 +102,7 @@ export function updateTodoItem(db: Database, id: number, updates: Record<string,
   if (current && updated) {
     const movedColumn = updates.column_id !== undefined && current.column_id !== updated.column_id;
     const reordered = updates.sort_order !== undefined && current.sort_order !== updated.sort_order;
-    const contentChanged = ["title", "description", "priority", "status"].some(
+    const contentChanged = ["title", "description", "priority", "due_date"].some(
       (key) => updates[key] !== undefined && current[key] !== updated[key],
     );
     if (movedColumn || reordered || contentChanged) {
@@ -120,8 +135,8 @@ function todoChangeDetails(current: any, updated: any, updates: Record<string, a
   if (updates.priority !== undefined && current.priority !== updated.priority) {
     details.push(`优先级 ${priorityText(current.priority)} → ${priorityText(updated.priority)}`);
   }
-  if (updates.status !== undefined && current.status !== updated.status) {
-    details.push(`状态 ${statusText(current.status)} → ${statusText(updated.status)}`);
+  if (updates.due_date !== undefined && current.due_date !== updated.due_date) {
+    details.push(`截止 ${current.due_date || "无"} → ${updated.due_date || "无"}`);
   }
   return details;
 }
@@ -130,10 +145,6 @@ function priorityText(priority: string): string {
   if (priority === "high") return "高";
   if (priority === "low") return "低";
   return "中";
-}
-
-function statusText(status: string): string {
-  return status === "done" ? "完成" : "待办";
 }
 
 function normalizeTitle(value: unknown): string {
@@ -148,10 +159,12 @@ function normalizePriority(value: unknown): string {
   return priority;
 }
 
-function normalizeStatus(value: unknown): string {
-  const status = String(value ?? "todo").trim();
-  if (!STATUSES.has(status)) throw invalidKanban();
-  return status;
+function normalizeDueDate(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const date = String(value).trim();
+  if (!date) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw invalidKanban();
+  return date;
 }
 
 function normalizeSortOrder(value: unknown): number {
@@ -165,7 +178,7 @@ function normalizeTodoUpdates(updates: Record<string, any>): Record<string, any>
   if (next.title !== undefined) next.title = normalizeTitle(next.title);
   if (next.description !== undefined) next.description = String(next.description ?? "").trim();
   if (next.priority !== undefined) next.priority = normalizePriority(next.priority);
-  if (next.status !== undefined) next.status = normalizeStatus(next.status);
+  if (next.due_date !== undefined) next.due_date = normalizeDueDate(next.due_date);
   if (next.sort_order !== undefined) next.sort_order = normalizeSortOrder(next.sort_order);
   return next;
 }

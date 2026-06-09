@@ -2,7 +2,7 @@
 
 export interface TodoItem {
   id: number; title: string; description: string
-  priority: string; status: string
+  priority: string; due_date: string | null
   board_id: number; column_id: number; sort_order: number
 }
 
@@ -51,4 +51,16 @@ export type ActivityScope = {
   entity: 'column' | 'todo'
   id: number
   title: string
+}
+
+export interface TodoSearchHit {
+  id: number
+  title: string
+  description: string
+  priority: string
+  due_date: string | null
+  board_id: number
+  column_id: number
+  board_name: string
+  column_name: string
 }

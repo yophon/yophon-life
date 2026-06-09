@@ -63,6 +63,22 @@
             </div>
           </div>
           <div class="board-actions">
+            <div class="task-search" ref="taskSearchRef">
+              <input
+                class="task-search-input"
+                v-model="taskSearchQuery"
+                :placeholder="prefs.t('todoSearchTasks')"
+                @input="onTaskSearch"
+                @focus="onTaskSearch">
+              <button v-if="taskSearchQuery" type="button" class="task-search-clear" @click="clearTaskSearch">✕</button>
+              <div v-if="showSearchResults" class="task-search-results">
+                <p v-if="!taskSearchResults.length" class="task-search-empty">{{ prefs.t('todoHistoryEmpty') }}</p>
+                <button v-for="hit in taskSearchResults" :key="hit.id" type="button" class="task-search-hit" @click="jumpToHit(hit)">
+                  <span class="task-search-hit-title">#{{ hit.id }} {{ hit.title }}</span>
+                  <span class="task-search-hit-loc">{{ hit.board_name }} · {{ hit.column_name }}</span>
+                </button>
+              </div>
+            </div>
             <label v-if="currentBoard" class="folder-control board-folder-control">
               <span class="folder-control-label">{{ prefs.t('todoBoardFolderShort') }}</span>
               <select class="folder-control-select board-folder-select" :value="currentBoard.folder_id ?? ''" @change="onCurrentBoardFolderChange">
@@ -149,16 +165,17 @@
                         class="kanban-drop-placeholder"></div>
                       <div
                         class="kanban-card"
-                        :class="{ dragging: dragState.id === item.id }"
+                        :class="{ dragging: dragState.id === item.id, 'search-hit': searchHitId === item.id }"
                         :data-id="item.id"
                         @pointerdown="onPointerDown(item, $event)"
                         @click="onCardClick(item)">
                         <span class="kanban-card-id">#{{ item.id }}</span>
                         <div class="kanban-card-title">{{ item.title }}</div>
-                        <p v-if="item.description" class="kanban-card-desc">{{ item.description }}</p>
+                        <div v-if="item.description" class="kanban-card-desc" v-html="renderMarkdown(item.description)"></div>
                         <div class="kanban-card-meta">
                           <span class="kanban-priority" :class="item.priority"></span>
                           <span class="text-xs">{{ priorityLabel(item.priority) }}</span>
+                          <span v-if="item.due_date" class="kanban-card-due" :class="dueClass(item.due_date)">{{ item.due_date }}</span>
                           <span class="kanban-card-delete" @pointerdown.stop @click.stop="askDeleteTodo(item)">✕</span>
                         </div>
                       </div>
@@ -222,6 +239,10 @@
             <option value="medium">{{ prefs.t('commonMedium') }}</option>
             <option value="low">{{ prefs.t('commonLow') }}</option>
           </select>
+        </div>
+        <div class="form-group mb-16">
+          <label class="form-label">{{ prefs.t('todoDueDate') }}</label>
+          <input type="date" class="input" v-model="taskForm.due_date">
         </div>
         <div class="form-group mb-20">
           <label class="form-label">{{ prefs.t('todoColumn') }}</label>
@@ -445,7 +466,7 @@ import PasswordGate from '../components/PasswordGate.vue'
 import AppModal from '../components/AppModal.vue'
 import { usePreferencesStore } from '../stores/preferences'
 import type {
-  TodoItem, TodoComment, Board, BoardFolder, Column, KanbanActivity, ActivityScope,
+  TodoItem, TodoComment, Board, BoardFolder, Column, KanbanActivity, ActivityScope, TodoSearchHit,
 } from '../types/kanban'
 import {
   createLongPressDrag,
@@ -453,6 +474,7 @@ import {
   resetLongPressDrag,
   longPressBlocksDrag,
 } from '../composables/useLongPressDrag'
+import { marked } from 'marked'
 
 const authStore = useAuthStore()
 const prefs = usePreferencesStore()
@@ -482,7 +504,15 @@ const boardError = ref('')
 const pendingAction = ref('')
 
 // Forms
-const taskForm = ref({ title: '', description: '', priority: 'medium', column_id: 0 })
+const taskForm = ref({ title: '', description: '', priority: 'medium', due_date: '', column_id: 0 })
+
+// Cross-board task search
+const taskSearchQuery = ref('')
+const taskSearchResults = ref<TodoSearchHit[]>([])
+const showSearchResults = ref(false)
+const searchHitId = ref<number | null>(null)
+const taskSearchRef = ref<HTMLElement | null>(null)
+let taskSearchTimer: ReturnType<typeof setTimeout> | null = null
 const boardFormName = ref('')
 const boardFormFolderId = ref('')
 const folderFormName = ref('')
@@ -639,6 +669,62 @@ function priorityLabel(p: string) {
   return p === 'high' ? prefs.t('commonHigh') : p === 'medium' ? prefs.t('commonMedium') : prefs.t('commonLow')
 }
 
+function renderMarkdown(text: string): string {
+  return marked.parse(text || '', { breaks: true, async: false }) as string
+}
+
+function dueClass(due: string | null): string {
+  if (!due) return ''
+  const today = new Date().toISOString().split('T')[0]
+  if (due < today) return 'overdue'
+  if (due === today) return 'due-today'
+  return ''
+}
+
+function onTaskSearch() {
+  if (taskSearchTimer) clearTimeout(taskSearchTimer)
+  const q = taskSearchQuery.value.trim()
+  if (!q) { showSearchResults.value = false; taskSearchResults.value = []; return }
+  taskSearchTimer = setTimeout(async () => {
+    if (!authStore.authed) return
+    try {
+      taskSearchResults.value = await api<TodoSearchHit[]>(`/api/todo/search?q=${encodeURIComponent(q)}`)
+      showSearchResults.value = true
+    } catch (e) {
+      console.error('Task search failed:', e)
+    }
+  }, 250)
+}
+
+function clearTaskSearch() {
+  taskSearchQuery.value = ''
+  taskSearchResults.value = []
+  showSearchResults.value = false
+}
+
+async function jumpToHit(hit: TodoSearchHit) {
+  showSearchResults.value = false
+  taskSearchQuery.value = ''
+  if (hit.board_id !== currentBoardId.value) {
+    switchBoard(hit.board_id)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  await nextTick()
+  const el = kanbanRef.value?.querySelector<HTMLElement>(`.kanban-card[data-id="${hit.id}"]`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    searchHitId.value = hit.id
+    setTimeout(() => { if (searchHitId.value === hit.id) searchHitId.value = null }, 2000)
+  }
+}
+
+function closeSearchOnOutside(event: PointerEvent) {
+  if (!showSearchResults.value) return
+  const target = event.target as Node | null
+  if (target && taskSearchRef.value?.contains(target)) return
+  showSearchResults.value = false
+}
+
 function isColCollapsed(col: Column) {
   return Number(col.collapsed || 0) === 1
 }
@@ -671,7 +757,7 @@ function firstColumnId() {
 }
 
 function resetTaskForm() {
-  taskForm.value = { title: '', description: '', priority: 'medium', column_id: firstColumnId() }
+  taskForm.value = { title: '', description: '', priority: 'medium', due_date: '', column_id: firstColumnId() }
 }
 
 // ── Data loading ──
@@ -1013,6 +1099,7 @@ function openEditTodo(item: TodoItem) {
     title: item.title,
     description: item.description || '',
     priority: item.priority,
+    due_date: item.due_date || '',
     column_id: item.column_id,
   }
   showTaskModal.value = true
@@ -1026,6 +1113,7 @@ async function saveEditTodo() {
     title: taskForm.value.title,
     description: taskForm.value.description,
     priority: taskForm.value.priority,
+    due_date: taskForm.value.due_date || null,
     column_id: taskForm.value.column_id,
   }
   await runPending('saveTodo', async () => {
@@ -1701,6 +1789,7 @@ onMounted(() => {
     authStore.check()
   }
   document.addEventListener('touchmove', onTouchPrevent, { passive: false })
+  document.addEventListener('pointerdown', closeSearchOnOutside)
 })
 
 onUnmounted(() => {
@@ -1717,6 +1806,7 @@ onUnmounted(() => {
   document.removeEventListener('pointerup', onColumnResizePointerUp)
   document.removeEventListener('pointermove', onBoardPointerMove)
   document.removeEventListener('pointerup', onBoardPointerUp)
+  document.removeEventListener('pointerdown', closeSearchOnOutside)
 })
 </script>
 

@@ -73,7 +73,7 @@ function createTables(db: Database) {
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     priority TEXT DEFAULT 'medium',
-    status TEXT DEFAULT 'todo',
+    due_date TEXT,
     board_id INTEGER DEFAULT 1,
     column_id INTEGER,
     sort_order INTEGER DEFAULT 0,
@@ -143,6 +143,9 @@ function runMigrations(db: Database) {
   tryAlter("ALTER TABLE todo_items ADD COLUMN board_id INTEGER DEFAULT 1");
   tryAlter("ALTER TABLE todo_items ADD COLUMN column_id INTEGER");
   tryAlter("ALTER TABLE todo_items ADD COLUMN sort_order INTEGER DEFAULT 0");
+  tryAlter("ALTER TABLE todo_items ADD COLUMN due_date TEXT");
+  // "Done" is expressed by which column a card sits in, not a boolean status.
+  tryAlter("ALTER TABLE todo_items DROP COLUMN status");
   tryAlter("ALTER TABLE kanban_boards ADD COLUMN folder_id INTEGER REFERENCES kanban_folders(id) ON DELETE SET NULL");
 
   tryAlter("ALTER TABLE diary_entries ADD COLUMN updated_at INTEGER");

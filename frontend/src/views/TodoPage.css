@@ -1019,3 +1019,161 @@
     font-size: .9rem;
   }
 }
+
+/* Markdown card description */
+.kanban-card-desc {
+  max-height: 120px;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.kanban-card-desc :where(p, ul, ol) {
+  margin: 0 0 0.4em;
+}
+
+.kanban-card-desc :where(p, ul, ol):last-child {
+  margin-bottom: 0;
+}
+
+.kanban-card-desc :where(ul, ol) {
+  padding-left: 1.2em;
+}
+
+.kanban-card-desc :where(h1, h2, h3, h4) {
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin: 0.3em 0;
+}
+
+.kanban-card-desc code {
+  background: var(--color-tag-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.kanban-card-desc pre {
+  background: var(--color-tag-bg);
+  padding: 0.5em 0.7em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.kanban-card-desc pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Due date chip */
+.kanban-card-due {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-tag-bg);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kanban-card-due.overdue {
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  color: var(--color-danger);
+}
+
+.kanban-card-due.due-today {
+  background: color-mix(in srgb, #d77 20%, transparent);
+  color: #b45309;
+}
+
+/* Search hit highlight */
+.kanban-card.search-hit {
+  box-shadow: 0 0 0 2px var(--color-accent);
+  animation: search-hit-pulse 0.6s ease;
+}
+
+@keyframes search-hit-pulse {
+  0% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 50%, transparent); }
+  100% { box-shadow: 0 0 0 2px var(--color-accent); }
+}
+
+/* Task search box + results dropdown */
+.task-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.task-search-input {
+  width: 160px;
+  padding: 6px 24px 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+  font-size: 0.82rem;
+}
+
+.task-search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.task-search-clear {
+  position: absolute;
+  right: 6px;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.task-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: 320px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+
+.task-search-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.task-search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.task-search-hit:hover {
+  background: var(--color-tag-bg);
+}
+
+.task-search-hit-title {
+  font-size: 0.84rem;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-search-hit-loc {
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
