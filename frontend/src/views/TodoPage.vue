@@ -359,6 +359,28 @@ const deleteColCount = computed(() => {
 
 // ── Drag state ──
 const DRAG_THRESHOLD = 5
+const LONG_PRESS_DELAY_MS = 320
+const LONG_PRESS_MOVE_TOLERANCE = 10
+type LongPressMode = 'idle' | 'waiting' | 'ready' | 'cancelled'
+type LongPressDrag = {
+  timer: number | null
+  pointerId: number | null
+  startX: number
+  startY: number
+  required: boolean
+  mode: LongPressMode
+}
+function createLongPressDrag(): LongPressDrag {
+  return {
+    timer: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    required: false,
+    mode: 'idle',
+  }
+}
+
 const dragState = reactive({
   active: false,
   id: null as number | null,
@@ -372,6 +394,7 @@ const dragState = reactive({
 })
 let pointerStart = { x: 0, y: 0, id: 0, title: '', colId: 0, width: 0 }
 let hasMoved = false
+const cardLongPress = createLongPressDrag()
 
 const columnDragState = reactive({
   active: false,
@@ -382,6 +405,7 @@ const columnDragState = reactive({
 })
 let columnPointerStart = { x: 0, y: 0, id: 0 }
 let columnHasMoved = false
+const columnLongPress = createLongPressDrag()
 
 const columnResizeState = reactive({
   active: false,
@@ -398,6 +422,7 @@ const boardDragState = reactive({
 })
 let boardPointerStart = { x: 0, y: 0, id: 0 }
 let boardHasMoved = false
+const boardLongPress = createLongPressDrag()
 
 const ghostStyle = computed(() => ({
   position: 'fixed' as const,
@@ -409,6 +434,52 @@ const ghostStyle = computed(() => ({
 }))
 
 // ── Helpers ──
+function shouldRequireLongPress(e: PointerEvent) {
+  if (e.pointerType === 'touch' || e.pointerType === 'pen') return true
+  return window.matchMedia?.('(pointer: coarse)').matches ?? false
+}
+
+function beginLongPressDrag(state: LongPressDrag, e: PointerEvent, onReady: (startEvent: PointerEvent) => void) {
+  resetLongPressDrag(state)
+  state.required = shouldRequireLongPress(e)
+  if (!state.required) return
+
+  state.pointerId = e.pointerId
+  state.startX = e.clientX
+  state.startY = e.clientY
+  state.mode = 'waiting'
+  state.timer = window.setTimeout(() => {
+    state.timer = null
+    if (state.mode !== 'waiting') return
+    state.mode = 'ready'
+    onReady(e)
+  }, LONG_PRESS_DELAY_MS)
+}
+
+function resetLongPressDrag(state: LongPressDrag) {
+  if (state.timer) window.clearTimeout(state.timer)
+  state.timer = null
+  state.pointerId = null
+  state.required = false
+  state.mode = 'idle'
+}
+
+function longPressBlocksDrag(state: LongPressDrag, e: PointerEvent) {
+  if (!state.required) return false
+  if (state.pointerId !== e.pointerId) return true
+  if (state.mode === 'cancelled') return true
+  if (state.mode !== 'waiting') return false
+
+  const dx = e.clientX - state.startX
+  const dy = e.clientY - state.startY
+  if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
+    if (state.timer) window.clearTimeout(state.timer)
+    state.timer = null
+    state.mode = 'cancelled'
+  }
+  return true
+}
+
 function itemsByCol(colId: number): TodoItem[] {
   return itemsByColumn.value.get(colId) || []
 }
@@ -804,25 +875,38 @@ function onPointerDown(item: TodoItem, e: PointerEvent) {
   hasMoved = false
   dragState.offsetX = e.clientX - rect.left
   dragState.offsetY = e.clientY - rect.top
+  dragState.targetColId = 0
+  dragState.insertIndex = -1
+
+  beginLongPressDrag(cardLongPress, e, startCardDrag)
 
   document.addEventListener('pointermove', onPointerMove)
   document.addEventListener('pointerup', onPointerUp)
 }
 
+function startCardDrag(e: PointerEvent) {
+  if (dragState.active) return
+  hasMoved = true
+  dragState.active = true
+  dragState.id = pointerStart.id
+  dragState.title = pointerStart.title
+  dragState.originColId = pointerStart.colId
+  dragState.cardWidth = pointerStart.width
+  dragState.x = e.clientX
+  dragState.y = e.clientY
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'grabbing'
+}
+
 function onPointerMove(e: PointerEvent) {
+  if (longPressBlocksDrag(cardLongPress, e)) return
+
   const dx = e.clientX - pointerStart.x
   const dy = e.clientY - pointerStart.y
   if (!hasMoved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
 
   if (!hasMoved) {
-    hasMoved = true
-    dragState.active = true
-    dragState.id = pointerStart.id
-    dragState.title = pointerStart.title
-    dragState.originColId = pointerStart.colId
-    dragState.cardWidth = pointerStart.width
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'grabbing'
+    startCardDrag(e)
   }
 
   dragState.x = e.clientX
@@ -866,6 +950,7 @@ function getDropTarget(x: number, y: number): { colId: number; index: number } {
 async function onPointerUp() {
   document.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerup', onPointerUp)
+  resetLongPressDrag(cardLongPress)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
 
@@ -944,22 +1029,32 @@ function onBoardPointerDown(board: Board, e: PointerEvent) {
 
   boardPointerStart = { x: e.clientX, y: e.clientY, id: board.id }
   boardHasMoved = false
+  boardDragState.targetId = null
+
+  beginLongPressDrag(boardLongPress, e, startBoardDrag)
 
   document.addEventListener('pointermove', onBoardPointerMove)
   document.addEventListener('pointerup', onBoardPointerUp)
 }
 
+function startBoardDrag() {
+  if (boardDragState.active) return
+  boardHasMoved = true
+  boardDragState.active = true
+  boardDragState.id = boardPointerStart.id
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'grabbing'
+}
+
 function onBoardPointerMove(e: PointerEvent) {
+  if (longPressBlocksDrag(boardLongPress, e)) return
+
   const dx = e.clientX - boardPointerStart.x
   const dy = e.clientY - boardPointerStart.y
   if (!boardHasMoved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
 
   if (!boardHasMoved) {
-    boardHasMoved = true
-    boardDragState.active = true
-    boardDragState.id = boardPointerStart.id
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'grabbing'
+    startBoardDrag()
   }
 
   const hit = getBoardDropTarget(e.clientX, e.clientY)
@@ -996,6 +1091,7 @@ function getBoardDropTarget(x: number, y: number): { id: number | null; insertBe
 async function onBoardPointerUp() {
   document.removeEventListener('pointermove', onBoardPointerMove)
   document.removeEventListener('pointerup', onBoardPointerUp)
+  resetLongPressDrag(boardLongPress)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
 
@@ -1065,9 +1161,21 @@ function onColumnPointerDown(col: Column, e: PointerEvent) {
 
   columnPointerStart = { x: e.clientX, y: e.clientY, id: col.id }
   columnHasMoved = false
+  columnDragState.targetColId = null
+
+  beginLongPressDrag(columnLongPress, e, startColumnDrag)
 
   document.addEventListener('pointermove', onColumnPointerMove)
   document.addEventListener('pointerup', onColumnPointerUp)
+}
+
+function startColumnDrag() {
+  if (columnDragState.active) return
+  columnHasMoved = true
+  columnDragState.active = true
+  columnDragState.id = columnPointerStart.id
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'grabbing'
 }
 
 function onColumnHeaderClick(col: Column) {
@@ -1132,16 +1240,14 @@ async function onColumnResizePointerUp() {
 }
 
 function onColumnPointerMove(e: PointerEvent) {
+  if (longPressBlocksDrag(columnLongPress, e)) return
+
   const dx = e.clientX - columnPointerStart.x
   const dy = e.clientY - columnPointerStart.y
   if (!columnHasMoved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
 
   if (!columnHasMoved) {
-    columnHasMoved = true
-    columnDragState.active = true
-    columnDragState.id = columnPointerStart.id
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'grabbing'
+    startColumnDrag()
   }
 
   const hit = getColumnDropTarget(e.clientX, e.clientY)
@@ -1182,6 +1288,7 @@ function getColumnDropTarget(x: number, y: number): { colId: number | null; rowI
 async function onColumnPointerUp() {
   document.removeEventListener('pointermove', onColumnPointerMove)
   document.removeEventListener('pointerup', onColumnPointerUp)
+  resetLongPressDrag(columnLongPress)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
 
@@ -1200,6 +1307,8 @@ async function onColumnPointerUp() {
   columnDragState.active = false
   columnDragState.id = null
   columnDragState.targetColId = null
+
+  if (targetColId === null) return
 
   const moving = columns.value.find(c => c.id === id)
   if (!moving) return
@@ -1271,6 +1380,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.body.classList.remove('todo-board-page')
+  resetLongPressDrag(cardLongPress)
+  resetLongPressDrag(columnLongPress)
+  resetLongPressDrag(boardLongPress)
   document.removeEventListener('touchmove', onTouchPrevent)
   document.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerup', onPointerUp)
