@@ -359,7 +359,7 @@ const deleteColCount = computed(() => {
 
 // ── Drag state ──
 const DRAG_THRESHOLD = 5
-const LONG_PRESS_DELAY_MS = 320
+const LONG_PRESS_DELAY_MS = 550
 const LONG_PRESS_MOVE_TOLERANCE = 10
 type LongPressMode = 'idle' | 'waiting' | 'ready' | 'cancelled'
 type LongPressDrag = {
@@ -439,7 +439,7 @@ function shouldRequireLongPress(e: PointerEvent) {
   return window.matchMedia?.('(pointer: coarse)').matches ?? false
 }
 
-function beginLongPressDrag(state: LongPressDrag, e: PointerEvent, onReady: (startEvent: PointerEvent) => void) {
+function beginLongPressDrag(state: LongPressDrag, e: PointerEvent) {
   resetLongPressDrag(state)
   state.required = shouldRequireLongPress(e)
   if (!state.required) return
@@ -452,7 +452,6 @@ function beginLongPressDrag(state: LongPressDrag, e: PointerEvent, onReady: (sta
     state.timer = null
     if (state.mode !== 'waiting') return
     state.mode = 'ready'
-    onReady(e)
   }, LONG_PRESS_DELAY_MS)
 }
 
@@ -878,7 +877,7 @@ function onPointerDown(item: TodoItem, e: PointerEvent) {
   dragState.targetColId = 0
   dragState.insertIndex = -1
 
-  beginLongPressDrag(cardLongPress, e, startCardDrag)
+  beginLongPressDrag(cardLongPress, e)
 
   document.addEventListener('pointermove', onPointerMove)
   document.addEventListener('pointerup', onPointerUp)
@@ -953,6 +952,7 @@ function getDropTarget(x: number, y: number): { colId: number; index: number } {
 async function onPointerUp() {
   document.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerup', onPointerUp)
+  if (cardLongPress.mode === 'ready' || cardLongPress.mode === 'cancelled') hasMoved = true
   resetLongPressDrag(cardLongPress)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
@@ -1034,7 +1034,7 @@ function onBoardPointerDown(board: Board, e: PointerEvent) {
   boardHasMoved = false
   boardDragState.targetId = null
 
-  beginLongPressDrag(boardLongPress, e, startBoardDrag)
+  beginLongPressDrag(boardLongPress, e)
 
   document.addEventListener('pointermove', onBoardPointerMove)
   document.addEventListener('pointerup', onBoardPointerUp)
@@ -1097,6 +1097,7 @@ function getBoardDropTarget(x: number, y: number): { id: number | null; insertBe
 async function onBoardPointerUp() {
   document.removeEventListener('pointermove', onBoardPointerMove)
   document.removeEventListener('pointerup', onBoardPointerUp)
+  if (boardLongPress.mode === 'ready' || boardLongPress.mode === 'cancelled') boardHasMoved = true
   resetLongPressDrag(boardLongPress)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
@@ -1169,7 +1170,7 @@ function onColumnPointerDown(col: Column, e: PointerEvent) {
   columnHasMoved = false
   columnDragState.targetColId = null
 
-  beginLongPressDrag(columnLongPress, e, startColumnDrag)
+  beginLongPressDrag(columnLongPress, e)
 
   document.addEventListener('pointermove', onColumnPointerMove)
   document.addEventListener('pointerup', onColumnPointerUp)
@@ -1297,6 +1298,7 @@ function getColumnDropTarget(x: number, y: number): { colId: number | null; rowI
 async function onColumnPointerUp() {
   document.removeEventListener('pointermove', onColumnPointerMove)
   document.removeEventListener('pointerup', onColumnPointerUp)
+  if (columnLongPress.mode === 'ready' || columnLongPress.mode === 'cancelled') columnHasMoved = true
   resetLongPressDrag(columnLongPress)
   document.body.style.userSelect = ''
   document.body.style.cursor = ''
@@ -1740,6 +1742,7 @@ onUnmounted(() => {
   position: relative;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition: box-shadow .2s var(--ease), transform .2s var(--ease);
 }
 
