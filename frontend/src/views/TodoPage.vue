@@ -899,7 +899,10 @@ function startCardDrag(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (longPressBlocksDrag(cardLongPress, e)) return
+  if (longPressBlocksDrag(cardLongPress, e)) {
+    if (cardLongPress.mode === 'cancelled') hasMoved = true
+    return
+  }
 
   const dx = e.clientX - pointerStart.x
   const dy = e.clientY - pointerStart.y
@@ -1047,7 +1050,10 @@ function startBoardDrag() {
 }
 
 function onBoardPointerMove(e: PointerEvent) {
-  if (longPressBlocksDrag(boardLongPress, e)) return
+  if (longPressBlocksDrag(boardLongPress, e)) {
+    if (boardLongPress.mode === 'cancelled') boardHasMoved = true
+    return
+  }
 
   const dx = e.clientX - boardPointerStart.x
   const dy = e.clientY - boardPointerStart.y
@@ -1240,7 +1246,10 @@ async function onColumnResizePointerUp() {
 }
 
 function onColumnPointerMove(e: PointerEvent) {
-  if (longPressBlocksDrag(columnLongPress, e)) return
+  if (longPressBlocksDrag(columnLongPress, e)) {
+    if (columnLongPress.mode === 'cancelled') columnHasMoved = true
+    return
+  }
 
   const dx = e.clientX - columnPointerStart.x
   const dy = e.clientY - columnPointerStart.y
@@ -1729,6 +1738,8 @@ onUnmounted(() => {
   padding: 16px 18px;
   cursor: grab;
   position: relative;
+  user-select: none;
+  -webkit-user-select: none;
   transition: box-shadow .2s var(--ease), transform .2s var(--ease);
 }
 
