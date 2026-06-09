@@ -965,8 +965,12 @@ async function loadActivity() {
       limit: '120',
     })
     if (activityScope.value) {
-      params.set('entity_type', activityScope.value.entity)
-      params.set('entity_id', String(activityScope.value.id))
+      if (activityScope.value.entity === 'column') {
+        params.set('column_id', String(activityScope.value.id))
+      } else {
+        params.set('entity_type', activityScope.value.entity)
+        params.set('entity_id', String(activityScope.value.id))
+      }
     } else if (activityFilters.entity !== 'all') {
       params.set('entity_type', activityFilters.entity)
     }

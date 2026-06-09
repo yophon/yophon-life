@@ -24,6 +24,7 @@ export function createKanbanRoutes(db: Database) {
       board_id: numericQuery((query as any).board_id),
       entity_type: stringQuery((query as any).entity_type),
       entity_id: numericQuery((query as any).entity_id),
+      column_id: numericQuery((query as any).column_id),
       action: stringQuery((query as any).action),
       q: stringQuery((query as any).q),
       limit: numericQuery((query as any).limit),

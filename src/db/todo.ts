@@ -94,6 +94,7 @@ export function updateTodoItem(db: Database, id: number, updates: Record<string,
       const toColumn = movedColumn ? columnName(db, updated.column_id) : "";
       const details = todoChangeDetails(current, updated, updates);
       if (movedColumn) details.unshift(`从「${fromColumn || "未分栏"}」移到「${toColumn || "未分栏"}」`);
+      if (!movedColumn && contentChanged) details.push(`栏「${columnName(db, updated.column_id) || "未分栏"}」`);
       recordKanbanActivity(db, {
         action: movedColumn || (reordered && !contentChanged) ? "move" : "update",
         entity_type: "todo",
