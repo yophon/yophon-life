@@ -164,6 +164,17 @@ function runMigrations(db: Database) {
     created_at INTEGER DEFAULT (unixepoch()),
     updated_at INTEGER DEFAULT (unixepoch())
   )`);
+
+  // Enforce one diary entry per date: de-dup existing rows (keep pinned, else
+  // newest id), then add the unique index that ON CONFLICT(date) relies on.
+  db.run(`DELETE FROM diary_entries WHERE id NOT IN (
+    SELECT id FROM diary_entries d
+    WHERE id = (
+      SELECT id FROM diary_entries d2 WHERE d2.date = d.date
+      ORDER BY pinned DESC, id DESC LIMIT 1
+    )
+  )`);
+  db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_date ON diary_entries(date)");
 }
 
 function seedPassword(db: Database) {

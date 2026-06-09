@@ -20,7 +20,7 @@
                   <span class="search-icon">🔍</span>
                   <input v-model="searchQuery" :placeholder="prefs.t('diarySearchPlaceholder')" @input="onSearch">
                 </div>
-                <div v-if="!searchMode" class="diary-filter-group">
+                <div class="diary-filter-group">
                   <div class="mood-filter">
                     <button v-for="m in MOODS" :key="m.emoji"
                       :class="{ active: filterMood === m.emoji }"
@@ -29,7 +29,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="diary-filter-group" v-if="!searchMode && monthTags.length > 0">
+                <div class="diary-filter-group" v-if="monthTags.length > 0">
                   <div class="tag-row">
                     <span v-for="t in monthTags" :key="t" class="tag"
                       :class="{ active: filterTag === t }"
@@ -38,7 +38,7 @@
                     </span>
                   </div>
                 </div>
-                <button v-if="!searchMode && (filterMood || filterTag)" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
+                <button v-if="filterMood || filterTag" class="btn btn-sm" @click="filterMood = ''; filterTag = ''">{{ prefs.t('commonClear') }}</button>
               </div>
             </div>
 
@@ -152,10 +152,13 @@
                 <div v-if="isDiaryEntry(entry) && entry.id !== null" class="flex items-center gap-8">
                   <button class="diary-pin" :class="{ pinned: entry.pinned }"
                     @click.stop="togglePin(entry.id)">📌</button>
-                  <button class="btn btn-sm btn-danger" @click.stop="deleteEntry(entry.id)">{{ prefs.t('commonDelete') }}</button>
+                  <button class="btn btn-sm btn-danger" @click.stop="askDelete(entry.id)">{{ prefs.t('commonDelete') }}</button>
                 </div>
               </div>
-              <p v-if="isDiaryEntry(entry)" class="text-body mb-12">{{ truncate(entry.content, 120) }}</p>
+              <div v-if="isDiaryEntry(entry)" class="diary-entry-body mb-12">
+                <div v-if="searchMode" class="diary-entry-content" v-html="highlightText(entry.content, searchQuery)"></div>
+                <div v-else class="diary-entry-content diary-markdown" v-html="renderMarkdown(entry.content)"></div>
+              </div>
               <p v-else class="text-sm diary-linked-only-note mb-12">{{ prefs.t('diaryLinkedOnly') }}</p>
               <div class="tag-row" v-if="entry.tags && entry.tags.length > 0">
                 <span v-for="tag in entry.tags" :key="tag" class="tag">{{ tag }}</span>
@@ -225,10 +228,20 @@
         </div>
         <p v-if="formError" class="text-sm" style="color: var(--color-danger); margin-bottom: 12px;">{{ formError }}</p>
         <div class="flex gap-12" style="justify-content: flex-end;">
-          <button v-if="editingId" class="btn btn-danger" @click="deleteEntry(editingId!); showModal = false">{{ prefs.t('commonDelete') }}</button>
+          <button v-if="editingId" class="btn btn-danger" @click="askDelete(editingId!)">{{ prefs.t('commonDelete') }}</button>
           <div style="flex:1;"></div>
           <button class="btn" @click="showModal = false">{{ prefs.t('commonCancel') }}</button>
           <button class="btn btn-filled" @click="saveEntry">{{ prefs.t('commonSave') }}</button>
+        </div>
+      </AppModal>
+
+      <!-- Delete Confirm Modal -->
+      <AppModal :visible="showDeleteConfirm" @close="showDeleteConfirm = false">
+        <h2 class="heading-md mb-12">{{ prefs.t('commonDelete') }}</h2>
+        <p class="text-body mb-20">{{ prefs.t('diaryDeleteConfirm') }}</p>
+        <div class="flex gap-12" style="justify-content: flex-end;">
+          <button class="btn" @click="showDeleteConfirm = false">{{ prefs.t('commonCancel') }}</button>
+          <button class="btn btn-danger" @click="confirmDelete">{{ prefs.t('commonDelete') }}</button>
         </div>
       </AppModal>
     </main>
@@ -244,6 +257,7 @@ import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import { PIE_COLORS } from '../constants/chart'
 import { usePreferencesStore } from '../stores/preferences'
+import { marked } from 'marked'
 
 interface DiaryEntry {
   id: number | null; date: string; mood: string; mood_label: string
@@ -320,6 +334,8 @@ const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref({ date: '', mood: '', mood_label: '', content: '', tagsStr: '' })
 const formError = ref('')
+const showDeleteConfirm = ref(false)
+const pendingDeleteId = ref<number | null>(null)
 
 // ── Debounce timer ───
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -328,15 +344,15 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 const isCurrentMonth = computed(() => viewYear.value === now.getFullYear() && viewMonth.value === now.getMonth() + 1)
 
 const filteredEntries = computed(() => {
-  if (searchMode.value) return searchResults.value
-  let list = entries.value
+  let list = searchMode.value ? searchResults.value : entries.value
   if (filterMood.value) list = list.filter(e => e.mood === filterMood.value)
   if (filterTag.value) list = list.filter(e => e.tags?.includes(filterTag.value))
   return list
 })
 
 const monthTags = computed(() => {
-  const all = entries.value.flatMap(e => e.tags || [])
+  const src = searchMode.value ? searchResults.value : entries.value
+  const all = src.flatMap(e => e.tags || [])
   return [...new Set(all)].slice(0, 12)
 })
 
@@ -438,8 +454,22 @@ const calendarCells = computed(() => {
 })
 
 // ── Helpers ───
-function truncate(text: string, len: number) {
-  return text.length > len ? text.slice(0, len) + '...' : text
+function renderMarkdown(text: string): string {
+  return marked.parse(text || '', { breaks: true, async: false }) as string
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string
+  ))
+}
+
+function highlightText(text: string, query: string): string {
+  const safe = escapeHtml(text || '')
+  const q = query.trim()
+  if (!q) return safe
+  const pattern = escapeHtml(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return safe.replace(new RegExp(pattern, 'gi'), (m) => `<mark>${m}</mark>`)
 }
 
 function formatActivityTime(epochSeconds: number) {
@@ -651,7 +681,6 @@ function openModal(entry?: DiaryEntry, prefillDate?: string) {
 async function saveEntry() {
   formError.value = ''
   if (!form.value.date || !form.value.content) { formError.value = prefs.t('diaryNeedDateContent'); return }
-  if (!form.value.mood) { formError.value = prefs.t('diaryNeedMood'); return }
   const tags = form.value.tagsStr ? form.value.tagsStr.split(',').map(s => s.trim()).filter(Boolean) : []
 
   if (editingId.value !== null) {
@@ -675,15 +704,32 @@ async function saveEntry() {
   loadData()
 }
 
-async function deleteEntry(id: number) {
-  if (!confirm(prefs.t('diaryDeleteConfirm'))) return
+function askDelete(id: number) {
+  pendingDeleteId.value = id
+  showDeleteConfirm.value = true
+  showModal.value = false
+}
+
+async function confirmDelete() {
+  const id = pendingDeleteId.value
+  showDeleteConfirm.value = false
+  pendingDeleteId.value = null
+  if (id === null) return
   await api(`/api/diary/${id}`, { method: 'DELETE' })
+  entries.value = entries.value.filter(e => e.id !== id)
+  searchResults.value = searchResults.value.filter(e => e.id !== id)
   loadData()
 }
 
 async function togglePin(id: number) {
-  await api(`/api/diary/${id}/pin`, { method: 'PATCH' })
-  loadData()
+  const updated = await api<DiaryEntry>(`/api/diary/${id}/pin`, { method: 'PATCH' })
+  for (const list of [entries.value, searchResults.value]) {
+    const e = list.find(x => x.id === id)
+    if (e) e.pinned = updated.pinned
+  }
+  entries.value = [...entries.value].sort(
+    (a, b) => (Number(b.pinned || 0) - Number(a.pinned || 0)) || b.date.localeCompare(a.date),
+  )
 }
 
 // ── Watchers ───
@@ -1005,6 +1051,88 @@ onUnmounted(() => {
 .diary-kanban-board,
 .diary-linked-detail {
   color: var(--color-muted);
+}
+
+/* Rendered diary content (markdown / search highlight) */
+.diary-entry-content {
+  position: relative;
+  max-height: 200px;
+  overflow: hidden;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-ink);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.diary-markdown {
+  white-space: normal;
+}
+
+.diary-entry-content::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  background: linear-gradient(transparent, var(--color-card));
+  pointer-events: none;
+}
+
+.diary-markdown :where(p, ul, ol) {
+  margin: 0 0 0.5em;
+}
+
+.diary-markdown :where(p, ul, ol):last-child {
+  margin-bottom: 0;
+}
+
+.diary-markdown :where(ul, ol) {
+  padding-left: 1.3em;
+}
+
+.diary-markdown :where(h1, h2, h3, h4) {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.4em 0;
+}
+
+.diary-markdown a {
+  color: var(--color-accent);
+}
+
+.diary-markdown code {
+  background: var(--color-tag-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.diary-markdown pre {
+  background: var(--color-tag-bg);
+  padding: 0.6em 0.8em;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.diary-markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.diary-markdown blockquote {
+  border-left: 3px solid var(--color-border);
+  margin: 0.4em 0;
+  padding-left: 0.8em;
+  color: var(--color-muted);
+}
+
+.diary-entry-content mark {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 @media (max-width: 980px) {
