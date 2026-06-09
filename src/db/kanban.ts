@@ -23,6 +23,7 @@ export interface KanbanActivityInput {
 export interface KanbanActivityFilters {
   board_id?: number;
   entity_type?: string;
+  entity_id?: number;
   action?: string;
   q?: string;
   limit?: number;
@@ -62,6 +63,10 @@ export function getKanbanActivities(db: Database, filters: KanbanActivityFilters
   if (isActivityEntity(filters.entity_type)) {
     where.push("entity_type = ?");
     values.push(filters.entity_type);
+  }
+  if (filters.entity_id) {
+    where.push("entity_id = ?");
+    values.push(filters.entity_id);
   }
   if (isActivityAction(filters.action)) {
     where.push("action = ?");

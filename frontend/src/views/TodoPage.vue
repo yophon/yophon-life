@@ -34,7 +34,7 @@
             </div>
           </div>
           <div class="board-actions">
-            <button class="btn btn-sm" @click="openActivityModal">{{ prefs.t('todoHistory') }}</button>
+            <button class="btn btn-sm" @click="openActivityModal()">{{ prefs.t('todoHistory') }}</button>
             <button class="btn btn-sm" @click="showBoardModal = true">+ {{ prefs.t('todoAddBoard') }}</button>
             <button class="btn btn-sm" @click="showColModal = true">+ {{ prefs.t('todoAddColumn') }}</button>
             <button class="btn btn-sm btn-filled" @click="() => openNewTodo()">+ {{ prefs.t('todoAddTask') }}</button>
@@ -77,6 +77,14 @@
                         @keydown.escape="editingColId = null">
                     </div>
                     <div class="kanban-col-tools">
+                      <button
+                        class="kanban-col-tool"
+                        type="button"
+                        :title="prefs.t('todoHistory')"
+                        @pointerdown.stop
+                        @click.stop="openActivityModal({ entity: 'column', id: col.id, title: col.name })">
+                        ◷
+                      </button>
                       <button
                         class="kanban-col-tool"
                         type="button"
@@ -150,9 +158,17 @@
       <!-- Task Modal (create & edit) -->
       <AppModal :visible="showTaskModal" @close="closeTaskModal">
         <h2 class="heading-md mb-20">{{ editingTodoId ? prefs.t('todoEditTask') : prefs.t('todoAddTask') }}</h2>
-        <div v-if="editingTodoId" class="task-id-row mb-16">
-          <span>{{ prefs.t('todoTaskId') }}</span>
-          <code>#{{ editingTodoId }}</code>
+        <div v-if="editingTodoId" class="task-modal-head mb-16">
+          <div class="task-id-row">
+            <span>{{ prefs.t('todoTaskId') }}</span>
+            <code>#{{ editingTodoId }}</code>
+          </div>
+          <button
+            class="btn btn-sm"
+            type="button"
+            @click="openActivityModal({ entity: 'todo', id: editingTodoId, title: taskForm.title })">
+            {{ prefs.t('todoHistory') }}
+          </button>
         </div>
         <div class="form-group mb-16">
           <label class="form-label">{{ prefs.t('todoTaskName') }}</label>
@@ -246,13 +262,16 @@
       <AppModal :visible="showActivityModal" @close="showActivityModal = false">
         <div class="history-modal">
           <div class="history-header">
-            <h2 class="heading-md">{{ prefs.t('todoHistoryTitle') }}</h2>
+            <div class="history-title">
+              <h2 class="heading-md">{{ prefs.t('todoHistoryTitle') }}</h2>
+              <p v-if="activityScope">{{ prefs.tr('todoHistoryScope', { name: activityScope.title }) }}</p>
+            </div>
             <button class="btn btn-sm" type="button" :disabled="activityLoading" @click="loadActivity">
               {{ prefs.t('todoHistoryRefresh') }}
             </button>
           </div>
           <div class="history-filters">
-            <label class="history-filter">
+            <label v-if="!activityScope" class="history-filter">
               <span>{{ prefs.t('todoHistoryEntity') }}</span>
               <select class="input" v-model="activityFilters.entity">
                 <option value="all">{{ prefs.t('todoHistoryAllEntities') }}</option>
@@ -378,6 +397,11 @@ interface KanbanActivity {
   details: string
   created_at: number
 }
+type ActivityScope = {
+  entity: 'column' | 'todo'
+  id: number
+  title: string
+}
 
 const authStore = useAuthStore()
 const prefs = usePreferencesStore()
@@ -411,6 +435,7 @@ const commentsLoading = ref(false)
 const showActivityModal = ref(false)
 const activityItems = ref<KanbanActivity[]>([])
 const activityLoading = ref(false)
+const activityScope = ref<ActivityScope | null>(null)
 const activityFilters = reactive({
   entity: 'all',
   action: 'all',
@@ -925,7 +950,8 @@ function commentDateTime(timestamp: number) {
   return new Date(timestamp * 1000).toISOString()
 }
 
-function openActivityModal() {
+function openActivityModal(scope?: ActivityScope) {
+  activityScope.value = scope ?? null
   showActivityModal.value = true
   loadActivity()
 }
@@ -938,7 +964,12 @@ async function loadActivity() {
       board_id: String(currentBoardId.value),
       limit: '120',
     })
-    if (activityFilters.entity !== 'all') params.set('entity_type', activityFilters.entity)
+    if (activityScope.value) {
+      params.set('entity_type', activityScope.value.entity)
+      params.set('entity_id', String(activityScope.value.id))
+    } else if (activityFilters.entity !== 'all') {
+      params.set('entity_type', activityFilters.entity)
+    }
     if (activityFilters.action !== 'all') params.set('action', activityFilters.action)
     if (activityFilters.q.trim()) params.set('q', activityFilters.q.trim())
     activityItems.value = await api<KanbanActivity[]>(`/api/kanban/activity?${params.toString()}`)
@@ -1976,6 +2007,13 @@ onUnmounted(() => {
   font-size: .78rem;
 }
 
+.task-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .task-id-row code {
   color: var(--color-ink);
   font-family: var(--font-mono);
@@ -2060,8 +2098,13 @@ onUnmounted(() => {
   min-height: 58px;
 }
 
+:global(.modal:has(.history-modal)) {
+  max-width: min(820px, calc(100vw - 32px));
+}
+
 .history-modal {
-  width: min(760px, calc(100vw - 32px));
+  width: 100%;
+  min-width: 0;
 }
 
 .history-header,
@@ -2075,7 +2118,19 @@ onUnmounted(() => {
 
 .history-header {
   justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 16px;
+}
+
+.history-title {
+  min-width: 0;
+}
+
+.history-title p {
+  margin-top: 6px;
+  color: var(--color-muted);
+  font-size: .82rem;
+  overflow-wrap: anywhere;
 }
 
 .history-filters {
@@ -2360,12 +2415,13 @@ onUnmounted(() => {
     align-self: flex-end;
   }
 
-  .history-modal {
-    width: 100%;
+  .task-modal-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .history-header {
-    align-items: flex-start;
+  :global(.modal:has(.history-modal)) {
+    max-width: none;
   }
 
   .history-filters {
