@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { invalidKanban, todoNotFound } from "../errors";
 
 export interface TodoCommentInput {
   content: string;
@@ -36,18 +37,18 @@ export function deleteTodoComment(db: Database, todoId: number, commentId: numbe
 
 function ensureTodoExists(db: Database, todoId: number): void {
   const todo = db.query("SELECT id FROM todo_items WHERE id = ?").get(todoId);
-  if (!todo) throw new Error("TODO_NOT_FOUND");
+  if (!todo) throw todoNotFound();
 }
 
 function normalizeCommentContent(value: unknown): string {
   const content = String(value ?? "").trim();
-  if (!content) throw new Error("INVALID_TODO_COMMENT");
-  if (content.length > 2000) throw new Error("INVALID_TODO_COMMENT");
+  if (!content) throw invalidKanban();
+  if (content.length > 2000) throw invalidKanban();
   return content;
 }
 
 function normalizeCommentAuthor(value: unknown): string {
   const author = String(value ?? DEFAULT_COMMENT_AUTHOR).trim() || DEFAULT_COMMENT_AUTHOR;
-  if (author.length > 32) throw new Error("INVALID_TODO_COMMENT");
+  if (author.length > 32) throw invalidKanban();
   return author;
 }

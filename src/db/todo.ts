@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { recordKanbanActivity } from "./kanban";
+import { invalidKanban } from "../errors";
 
 export interface TodoInput {
   title: string;
@@ -137,25 +138,25 @@ function statusText(status: string): string {
 
 function normalizeTitle(value: unknown): string {
   const title = String(value ?? "").trim();
-  if (!title) throw new Error("INVALID_TODO_TITLE");
+  if (!title) throw invalidKanban();
   return title;
 }
 
 function normalizePriority(value: unknown): string {
   const priority = String(value ?? "medium").trim();
-  if (!PRIORITIES.has(priority)) throw new Error("INVALID_TODO_PRIORITY");
+  if (!PRIORITIES.has(priority)) throw invalidKanban();
   return priority;
 }
 
 function normalizeStatus(value: unknown): string {
   const status = String(value ?? "todo").trim();
-  if (!STATUSES.has(status)) throw new Error("INVALID_TODO_STATUS");
+  if (!STATUSES.has(status)) throw invalidKanban();
   return status;
 }
 
 function normalizeSortOrder(value: unknown): number {
   const sortOrder = Number(value);
-  if (!Number.isFinite(sortOrder)) throw new Error("INVALID_TODO_SORT_ORDER");
+  if (!Number.isFinite(sortOrder)) throw invalidKanban();
   return Math.round(sortOrder);
 }
 

@@ -1,10 +1,11 @@
 import { INTERNAL_REMOTE_IP_HEADER, serverConfig } from "./config";
+import { invalidId } from "./errors";
 
 export type CookieJar = Record<string, any>;
 
 export function parseId(value: string): number {
   const id = Number(value);
-  if (!Number.isInteger(id) || id <= 0) throw new Error("INVALID_ID");
+  if (!Number.isInteger(id) || id <= 0) throw invalidId();
   return id;
 }
 

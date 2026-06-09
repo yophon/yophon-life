@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { invalidKanban } from "../errors";
 
 const COLUMN_ALLOWED_FIELDS = ["name", "sort_order", "row_index", "collapsed", "width"] as const;
 const BOARD_ALLOWED_FIELDS = ["name", "sort_order", "folder_id"] as const;
@@ -50,9 +51,9 @@ function folderName(db: Database, folderId?: number | null): string {
 function resolveFolderId(db: Database, value: unknown): number | null {
   if (value === undefined || value === null || value === "") return null;
   const folderId = Number(value);
-  if (!Number.isInteger(folderId) || folderId <= 0) throw new Error("INVALID_BOARD_FOLDER_ID");
+  if (!Number.isInteger(folderId) || folderId <= 0) throw invalidKanban();
   const folder = db.query("SELECT id FROM kanban_folders WHERE id = ?").get(folderId) as any;
-  if (!folder) throw new Error("INVALID_BOARD_FOLDER_ID");
+  if (!folder) throw invalidKanban();
   return folder.id;
 }
 
@@ -173,7 +174,7 @@ export function getBoardFolders(db: Database): any[] {
 }
 
 export function createBoardFolder(db: Database, name: string): any {
-  name = normalizeName(name, "INVALID_BOARD_FOLDER_NAME");
+  name = normalizeName(name);
   const maxRow = db.query("SELECT MAX(sort_order) as ms FROM kanban_folders").get() as any;
   const sort_order = (maxRow?.ms ?? -SORT_GAP) + SORT_GAP;
   const result = db.run("INSERT INTO kanban_folders (name, sort_order) VALUES (?, ?)", [name, sort_order]);
@@ -182,7 +183,7 @@ export function createBoardFolder(db: Database, name: string): any {
 
 export function updateBoardFolder(db: Database, id: number, updates: KanbanFolderInput): any {
   const next: KanbanFolderInput = {};
-  if (updates.name !== undefined) next.name = normalizeName(updates.name, "INVALID_BOARD_FOLDER_NAME");
+  if (updates.name !== undefined) next.name = normalizeName(updates.name);
   if (updates.sort_order !== undefined) next.sort_order = normalizeSortOrder(updates.sort_order);
   const keys = Object.keys(next);
   if (!keys.length) return null;
@@ -210,7 +211,7 @@ export function getBoards(db: Database): any[] {
 }
 
 export function createBoard(db: Database, name: string, folderId?: number | null): any {
-  name = normalizeName(name, "INVALID_BOARD_NAME");
+  name = normalizeName(name);
   const resolvedFolderId = resolveFolderId(db, folderId);
   const sort_order = maxBoardSortOrder(db, resolvedFolderId) + SORT_GAP;
   const result = db.run("INSERT INTO kanban_boards (name, folder_id, sort_order) VALUES (?, ?, ?)", [name, resolvedFolderId, sort_order]);
@@ -302,7 +303,7 @@ export function getColumns(db: Database, boardId: number): any[] {
 }
 
 export function createColumn(db: Database, boardId: number, name: string): any {
-  name = normalizeName(name, "INVALID_COLUMN_NAME");
+  name = normalizeName(name);
   const maxRow = db.query("SELECT MAX(sort_order) as ms FROM kanban_columns WHERE board_id = ?").get(boardId) as any;
   const sort_order = (maxRow?.ms ?? -SORT_GAP) + SORT_GAP;
   const result = db.run(
@@ -386,9 +387,9 @@ export function deleteColumn(db: Database, id: number): void {
   }
 }
 
-function normalizeName(value: unknown, errorCode: string): string {
+function normalizeName(value: unknown): string {
   const name = String(value ?? "").trim();
-  if (!name) throw new Error(errorCode);
+  if (!name) throw invalidKanban();
   return name;
 }
 
@@ -408,13 +409,13 @@ function columnChangeDetails(current: any, updated: any, updates: { name?: strin
 
 function normalizeSortOrder(value: unknown): number {
   const sortOrder = Number(value);
-  if (!Number.isFinite(sortOrder)) throw new Error("INVALID_SORT_ORDER");
+  if (!Number.isFinite(sortOrder)) throw invalidKanban();
   return Math.round(sortOrder);
 }
 
 function normalizeRowIndex(value: unknown): number {
   const rowIndex = Number(value);
-  if (!Number.isInteger(rowIndex) || rowIndex < 0) throw new Error("INVALID_COLUMN_ROW_INDEX");
+  if (!Number.isInteger(rowIndex) || rowIndex < 0) throw invalidKanban();
   return rowIndex;
 }
 
@@ -425,13 +426,13 @@ function normalizeCollapsed(value: unknown): number {
 function clampDimension(value: unknown, min: number, max: number): number | null {
   if (value === null) return null;
   const dimension = Number(value);
-  if (!Number.isFinite(dimension)) throw new Error("INVALID_COLUMN_SIZE");
+  if (!Number.isFinite(dimension)) throw invalidKanban();
   return Math.max(min, Math.min(max, Math.round(dimension)));
 }
 
 function normalizeBoardUpdates(db: Database, updates: { name?: string; sort_order?: number; folder_id?: number | null }) {
   const next: any = { ...updates };
-  if (next.name !== undefined) next.name = normalizeName(next.name, "INVALID_BOARD_NAME");
+  if (next.name !== undefined) next.name = normalizeName(next.name);
   if (next.sort_order !== undefined) next.sort_order = normalizeSortOrder(next.sort_order);
   if (next.folder_id !== undefined) next.folder_id = resolveFolderId(db, next.folder_id);
   return next;
@@ -439,7 +440,7 @@ function normalizeBoardUpdates(db: Database, updates: { name?: string; sort_orde
 
 function normalizeColumnUpdates(updates: { name?: string; sort_order?: number; row_index?: number; collapsed?: number; width?: number | null }) {
   const next: any = { ...updates };
-  if (next.name !== undefined) next.name = normalizeName(next.name, "INVALID_COLUMN_NAME");
+  if (next.name !== undefined) next.name = normalizeName(next.name);
   if (next.sort_order !== undefined) next.sort_order = normalizeSortOrder(next.sort_order);
   if (next.row_index !== undefined) next.row_index = normalizeRowIndex(next.row_index);
   if (next.collapsed !== undefined) next.collapsed = normalizeCollapsed(next.collapsed);

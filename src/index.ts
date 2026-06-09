@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { INTERNAL_REMOTE_IP_HEADER, serverConfig } from "./config";
+import { AppError } from "./errors";
 import { initDb } from "./db";
 import { logRequest } from "./log";
 import { authGuard, cleanupAuthLimiter, createAuthRoutes } from "./routes/auth";
@@ -21,21 +22,9 @@ setInterval(() => {
 const app = new Elysia()
   .onError(({ code, error, set }) => {
     if (error instanceof Response) return error;
-    if ((error as Error).message === "INVALID_ID") {
-      set.status = 400;
-      return { error: "无效的 ID" };
-    }
-    if ((error as Error).message.startsWith("INVALID_TRANSACTION_")) {
-      set.status = 400;
-      return { error: "财务记录参数不合法" };
-    }
-    if ((error as Error).message === "TODO_NOT_FOUND") {
-      set.status = 404;
-      return { error: "任务不存在" };
-    }
-    if ((error as Error).message.startsWith("INVALID_TODO_") || (error as Error).message.startsWith("INVALID_COLUMN_") || (error as Error).message.startsWith("INVALID_BOARD_") || (error as Error).message === "INVALID_SORT_ORDER") {
-      set.status = 400;
-      return { error: "看板参数不合法" };
+    if (error instanceof AppError) {
+      set.status = error.status;
+      return { error: error.userMessage };
     }
     if (code === "VALIDATION") {
       set.status = 400;

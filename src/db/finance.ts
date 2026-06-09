@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { invalidTransaction } from "../errors";
 
 export const TOTAL_BUDGET_CATEGORY = "__total__";
 
@@ -36,28 +37,28 @@ function normalizeTransaction(tx: TransactionInput): TransactionInput {
   const category = tx.category?.trim();
   const date = tx.date?.trim();
 
-  if (type !== "income" && type !== "expense") throw new Error("INVALID_TRANSACTION_TYPE");
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_TRANSACTION_AMOUNT");
-  if (!category) throw new Error("INVALID_TRANSACTION_CATEGORY");
-  if (!DATE_PATTERN.test(date)) throw new Error("INVALID_TRANSACTION_DATE");
+  if (type !== "income" && type !== "expense") throw invalidTransaction();
+  if (!Number.isFinite(amount) || amount <= 0) throw invalidTransaction();
+  if (!category) throw invalidTransaction();
+  if (!DATE_PATTERN.test(date)) throw invalidTransaction();
 
   return { type, amount, category, date, note: tx.note?.trim() || "" };
 }
 
 function normalizeTransactionUpdates(updates: Record<string, any>): Record<string, any> {
   const next = { ...updates };
-  if (next.type !== undefined && next.type !== "income" && next.type !== "expense") throw new Error("INVALID_TRANSACTION_TYPE");
+  if (next.type !== undefined && next.type !== "income" && next.type !== "expense") throw invalidTransaction();
   if (next.amount !== undefined) {
     next.amount = Number(next.amount);
-    if (!Number.isFinite(next.amount) || next.amount <= 0) throw new Error("INVALID_TRANSACTION_AMOUNT");
+    if (!Number.isFinite(next.amount) || next.amount <= 0) throw invalidTransaction();
   }
   if (next.category !== undefined) {
     next.category = String(next.category).trim();
-    if (!next.category) throw new Error("INVALID_TRANSACTION_CATEGORY");
+    if (!next.category) throw invalidTransaction();
   }
   if (next.date !== undefined) {
     next.date = String(next.date).trim();
-    if (!DATE_PATTERN.test(next.date)) throw new Error("INVALID_TRANSACTION_DATE");
+    if (!DATE_PATTERN.test(next.date)) throw invalidTransaction();
   }
   if (next.note !== undefined) next.note = String(next.note).trim();
   return next;
